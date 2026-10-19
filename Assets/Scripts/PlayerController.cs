@@ -1,9 +1,12 @@
 using UnityEngine;
+using UnityEngine.UI;
 
 [RequireComponent(typeof(Rigidbody2D))]
 [RequireComponent(typeof(BoxCollider2D))]
 public class PlayerController : MonoBehaviour
 {
+    Animator anim;
+
     [Header("Tasten (im Inspector aenderbar)")]
     public KeyCode jumpKey = KeyCode.W;
     public KeyCode dashKey = KeyCode.CapsLock;
@@ -33,10 +36,19 @@ public class PlayerController : MonoBehaviour
     public float wallJumpLockTime = 0.15f;    // so lange kein Steuern nach Wandsprung
     public float wallCheckDistance = 0.6f;
 
+    [Header("Turnaround")]
+    public float turnaroundTime = 0.2f; // Wie lange die Wende-Animation dauert
+    private float turnaroundCounter;
+    private bool isTurningAround;
+
     [Header("Dash")]
     public float dashSpeed = 22f;
     public float dashTime = 0.15f;
     public float dashCooldown = 0.4f;
+    public float doubleTapTime = 0.10f; // So viel Zeit hast du für den Doppelklick
+    private float lastPressA = -10f;
+    private float lastPressD = -10f;
+    
 
     [Header("Slide")]
     public float slideSpeed = 14f;
@@ -56,7 +68,10 @@ public class PlayerController : MonoBehaviour
     [Header("Checks")]
     public Transform groundCheck;             // leeres Kind-Objekt an den Fuessen
     public float groundCheckRadius = 0.15f;
-    public LayerMask groundLayer;             // Layer "Ground" auswaehlen
+    public LayerMask groundLayer;    
+    public LayerMask projectileLayer;
+    public Image dashBar;
+    public Image shootBar;         // Layer "Ground" auswaehlen
 
     Rigidbody2D rb;
     BoxCollider2D box;
@@ -76,6 +91,7 @@ public class PlayerController : MonoBehaviour
     void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
+        anim = GetComponent<Animator>();
         box = GetComponent<BoxCollider2D>();
         cam = Camera.main;
         normalSize = box.size;
@@ -94,7 +110,12 @@ public class PlayerController : MonoBehaviour
         shootCounter -= dt;
         slideCooldownCounter -= dt;
         wallJumpLockCounter -= dt;
-        if (Input.GetKeyDown(jumpKey)) jumpBufferCounter = jumpBufferTime;
+        if (Input.GetKeyDown(jumpKey)) 
+        {
+            jumpBufferCounter = jumpBufferTime;
+            isTurningAround = false;
+        if (x != 0f) SetFacing(Mathf.Sign(x)); // Turnaround abbrechen, wenn man springt
+        }
         else jumpBufferCounter -= dt;
 
         // Waehrend des Dashs nichts anderes tun
@@ -105,12 +126,51 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        // Blickrichtung (beim Rutschen fix)
-        if (x != 0f && wallJumpLockCounter <= 0f && !isSliding) SetFacing(Mathf.Sign(x));
+        // Turnaround-Timer herunterzählen
+        if (isTurningAround)
+        {
+        turnaroundCounter -= Time.deltaTime;
+    
+     // Charakter bremst während des Drehens etwas ab
+        rb.linearVelocity = new Vector2(Mathf.MoveTowards(rb.linearVelocity.x, 0f, deceleration * Time.deltaTime), rb.linearVelocity.y);
+
+        if (turnaroundCounter <= 0f)
+        {
+            isTurningAround = false;
+        
+        // Blickrichtung nur umdrehen, wenn der Spieler nicht aktiv dagegen drückt
+            float inputDir = Mathf.Sign(Input.GetAxisRaw("Horizontal"));
+            if (Input.GetAxisRaw("Horizontal") != 0) 
+            {
+                SetFacing(inputDir);
+            }
+            else 
+            {
+                SetFacing(-facing);
+            }
+        }
+        }
+            
+
+        // Blickrichtung & Turnaround-Erkennung
+        if (!isTurningAround && x != 0f && wallJumpLockCounter <= 0f && !isSliding && !isDashing)
+        {
+         float inputDir = Mathf.Sign(x);
+    
+            if (inputDir != facing && isGrounded && Mathf.Abs(rb.linearVelocity.x) > 2f)
+            {
+                StartTurnaround();
+            }
+            else
+            {
+              SetFacing(inputDir);
+            }
+        }
 
         // Checks
         isGrounded = Physics2D.OverlapCircle(groundCheck.position, groundCheckRadius, groundLayer);
         isTouchingWall = Physics2D.Raycast(transform.position, Vector2.right * facing, wallCheckDistance, groundLayer);
+
 
         if (isGrounded)
         {
@@ -125,11 +185,37 @@ public class PlayerController : MonoBehaviour
 
         if ((isGrounded || isTouchingWall) && dashCooldownCounter <= 0f) canDash = true;
 
-        // Dash (Feststelltaste oder Q)
-        if ((Input.GetKeyDown(dashKey) || Input.GetKeyDown(dashKeyAlt)) && canDash && dashCooldownCounter <= 0f && !isSliding)
+        //dash
+        if (canDash && dashCooldownCounter <= 0f && !isSliding)
         {
-            StartDash();
-            return;
+            // 1. Die alte Methode: Normale Dash-Taste prüfen
+            if (Input.GetKeyDown(dashKey) || Input.GetKeyDown(dashKeyAlt))
+            {
+                StartDash();
+                return;
+            }
+
+            // 2. Neue Methode: Doppelklick für D (Rechts)
+            if (Input.GetKeyDown(KeyCode.D))
+            {
+                if (Time.time - lastPressD <= doubleTapTime) 
+                { 
+                    StartDash(); 
+                    return; 
+                }
+                lastPressD = Time.time;
+            }
+
+            // 3. Neue Methode: Doppelklick für A (Links)
+            if (Input.GetKeyDown(KeyCode.A))
+            {
+                if (Time.time - lastPressA <= doubleTapTime) 
+                { 
+                    StartDash(); 
+                    return; 
+                }
+                lastPressA = Time.time;
+            }
         }
 
         // Slide
@@ -159,7 +245,7 @@ public class PlayerController : MonoBehaviour
         }
 
         // Laufen
-        if (wallJumpLockCounter <= 0f)
+        if (!isTurningAround && wallJumpLockCounter <= 0f)
         {
             float targetSpeed = x * moveSpeed;
             float accelRate = (Mathf.Abs(targetSpeed) > 0.01f) ? acceleration : deceleration;
@@ -187,6 +273,32 @@ public class PlayerController : MonoBehaviour
 
         // Schuss und Teleport
         HandleShooting();
+
+        // UI Balken aktualisieren (1 = voll, 0 = leer)
+        if (dashBar != null) 
+        {
+        dashBar.fillAmount = 1f - Mathf.Clamp01(dashCooldownCounter / dashCooldown);
+        }
+    
+        if (shootBar != null) 
+        {
+        shootBar.fillAmount = 1f - Mathf.Clamp01(shootCounter / shootCooldown);
+        }
+
+        // Animator mit Daten füttern
+        if (anim != null)
+        {
+        anim.SetFloat("speed", Mathf.Abs(rb.linearVelocity.x));
+        //anim.SetFloat("vSpeed", rb.linearVelocity.y);
+        //anim.SetBool("isGrounded", isGrounded);
+        //anim.SetBool("isWallSliding", isWallSliding);
+        //anim.SetBool("isSliding", isSliding);
+        //anim.SetBool("isDashing", isDashing);
+        }
+    }
+    void LateUpdate()
+    {
+    if (anim != null) anim.SetBool("isTurningAround", isTurningAround);
     }
 
     // Eine Taste fuer beides: Ist kein Ball unterwegs, wird geschossen.
@@ -318,7 +430,8 @@ public class PlayerController : MonoBehaviour
         Projectile proj = p.GetComponent<Projectile>();
         if (proj != null)
         {
-            proj.Init(dir, groundLayer);
+            // Ersetze groundLayer durch projectileLayer
+            proj.Init(dir, projectileLayer); 
             activeProjectile = proj;
         }
     }
@@ -389,4 +502,12 @@ public class PlayerController : MonoBehaviour
             Gizmos.DrawWireSphere(groundCheck.position, groundCheckRadius);
         Gizmos.DrawLine(transform.position, transform.position + Vector3.right * facing * wallCheckDistance);
     }
+
+    void StartTurnaround()
+{
+    isTurningAround = true;
+    turnaroundCounter = turnaroundTime;
 }
+}
+
+
