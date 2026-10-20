@@ -15,7 +15,7 @@ GameObject:
   - component: {fileID: 645835388944611622}
   - component: {fileID: 2086685752876479278}
   m_Layer: 0
-  m_Name: Enemy
+  m_Name: Enemy 2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -62,7 +62,7 @@ SpriteRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
+  - {fileID: 2100000, guid: 9dfc825aed78fcd4ba02077103263b40, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -85,8 +85,8 @@ SpriteRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_MaskInteraction: 0
-  m_Sprite: {fileID: 7482667652216324306, guid: 311925a002f4447b3a28927169b83ea6, type: 3}
-  m_Color: {r: 1, g: 0.98699605, b: 0, a: 1}
+  m_Sprite: {fileID: -6508935379096440509, guid: 6421295faec7b1c478f92d432057b6dc, type: 3}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
   m_FlipY: 0
   m_DrawMode: 0
@@ -135,15 +135,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 29a4bc48e48799c4796735e2bd2b3a42, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Enemy
-  speed: 2
-  wallCheckDistance: 0.5
-  edgeCheckOffset: 0.5
-  edgeCheckDepth: 1
+  speed: 5
+  wallCheckDistance: 2
+  edgeCheckOffset: 2
+  edgeCheckDepth: 2
   groundLayer:
     serializedVersion: 2
     m_Bits: 64
-  canBeStomped: 1
+  canBeStomped: 0
   stompBounce: 10
+  killsPlayerOnContact: 1
 --- !u!114 &645835388944611622
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -156,7 +157,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddd0ff10868ecad46a40dcc515f7eac5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Destructible
-  health: 3
+  health: 2
   destroyEffect: {fileID: 0}
 --- !u!61 &2086685752876479278
 BoxCollider2D:
@@ -196,7 +197,7 @@ BoxCollider2D:
   m_SpriteTilingProperty:
     border: {x: 0, y: 0, z: 0, w: 0}
     pivot: {x: 0.5, y: 0.5}
-    oldSize: {x: 1, y: 1}
+    oldSize: {x: 0.8333333, y: 1}
     newSize: {x: 1, y: 1}
     adaptiveTilingThreshold: 0.5
     drawMode: 0

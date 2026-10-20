@@ -84,8 +84,8 @@ SpriteRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_MaskInteraction: 0
-  m_Sprite: {fileID: 7482667652216324306, guid: 311925a002f4447b3a28927169b83ea6, type: 3}
-  m_Color: {r: 0.119199276, g: 1, b: 0, a: 1}
+  m_Sprite: {fileID: -8582965763164753858, guid: ce57b451167dc0445bd8c2ffe0b9e371, type: 3}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
   m_FlipY: 0
   m_DrawMode: 0
@@ -110,7 +110,7 @@ Rigidbody2D:
   m_Mass: 1
   m_LinearDamping: 0
   m_AngularDamping: 0.05
-  m_GravityScale: 1.8
+  m_GravityScale: 1.5
   m_Material: {fileID: 0}
   m_IncludeLayers:
     serializedVersion: 2
@@ -160,7 +160,7 @@ BoxCollider2D:
   m_SpriteTilingProperty:
     border: {x: 0, y: 0, z: 0, w: 0}
     pivot: {x: 0.5, y: 0.5}
-    oldSize: {x: 1, y: 1}
+    oldSize: {x: 9.5, y: 2.5}
     newSize: {x: 1, y: 1}
     adaptiveTilingThreshold: 0.5
     drawMode: 0
@@ -182,5 +182,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Projectile
   speed: 13
   maxDistance: 30
-  radius: 0.05
+  radius: 0.1
   damage: 1
+  stuckLifetime: 2.75
+  gravityScale: -1
+  blockerLayerName: ProjectileBlocker
+  shootSound: {fileID: 8300000, guid: 3e7e2e4846ff8de4690f83802cd8252d, type: 3}
+  hitSound: {fileID: 8300000, guid: 7162b6ba8c55eb4429ef661737d613ca, type: 3}
+  volume: 0.2

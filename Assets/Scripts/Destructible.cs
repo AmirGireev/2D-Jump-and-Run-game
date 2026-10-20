@@ -1,10 +1,9 @@
 using UnityEngine;
 
-// Auf Kisten, Waende, Gegner usw. legen. Braucht einen Collider2D.
 public class Destructible : MonoBehaviour
 {
     public int health = 1;
-    public GameObject destroyEffect; // optional: Partikel-Prefab
+    public GameObject destroyEffect;
 
     public void TakeHit(int damage)
     {
@@ -13,7 +12,7 @@ public class Destructible : MonoBehaviour
         {
             if (destroyEffect != null)
                 Instantiate(destroyEffect, transform.position, Quaternion.identity);
-            Destroy(gameObject);
+            gameObject.SetActive(false);
         }
     }
 }

@@ -1,26 +1,27 @@
 using UnityEngine;
 
-// Auf die Main Camera legen. Keine Cinemachine noetig.
 [RequireComponent(typeof(Camera))]
 public class CameraFollow : MonoBehaviour
 {
     [Header("Ziel")]
-    public Transform target;                    // leer lassen = sucht automatisch den Spieler (Tag "Player")
+    public Transform target;
     public Vector3 offset = new Vector3(0f, 1.5f, -10f);
 
     [Header("Gefuehl")]
-    public float smoothTime = 0.15f;            // kleiner = straffer, groesser = schwammiger
-    public float lookAheadDistance = 2f;        // Kamera schaut in Blickrichtung voraus
+    public float smoothTime = 0.15f;
+    public float lookAheadDistance = 2f;
     public float lookAheadSmooth = 3f;
 
     [Header("Level-Grenzen (optional)")]
     public bool useBounds = false;
-    public Vector2 minBounds = new Vector2(-10f, -5f);   // linke untere Ecke des Levels
-    public Vector2 maxBounds = new Vector2(100f, 20f);   // rechte obere Ecke des Levels
+    public Vector2 minBounds = new Vector2(-10f, -5f);
+    public Vector2 maxBounds = new Vector2(100f, 20f);
 
     Camera cam;
     Vector3 velocity;
     float currentLookAhead;
+
+    // ---------- Unity ----------
 
     void Awake()
     {
@@ -29,26 +30,30 @@ public class CameraFollow : MonoBehaviour
 
     void Start()
     {
+        // Spieler suchen
         if (target == null)
         {
             GameObject p = GameObject.FindWithTag("Player");
             if (p != null) target = p.transform;
         }
 
-        // Kamera startet direkt beim Spieler, ohne rueberzuruckeln
+        // Startposition
         if (target != null) transform.position = target.position + offset;
     }
+
+    // ---------- Folgen ----------
 
     void LateUpdate()
     {
         if (target == null) return;
 
-        // Blickrichtung des Spielers (PlayerController spiegelt localScale.x)
+        // Look ahead
         float targetLook = Mathf.Sign(target.localScale.x) * lookAheadDistance;
         currentLookAhead = Mathf.Lerp(currentLookAhead, targetLook, lookAheadSmooth * Time.deltaTime);
 
         Vector3 desired = target.position + offset + new Vector3(currentLookAhead, 0f, 0f);
 
+        // Grenzen
         if (useBounds)
         {
             float halfH = cam.orthographicSize;
@@ -59,6 +64,8 @@ public class CameraFollow : MonoBehaviour
 
         transform.position = Vector3.SmoothDamp(transform.position, desired, ref velocity, smoothTime);
     }
+
+    // ---------- Gizmos ----------
 
     void OnDrawGizmosSelected()
     {

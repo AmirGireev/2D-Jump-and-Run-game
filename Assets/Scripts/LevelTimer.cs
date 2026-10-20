@@ -3,16 +3,13 @@ using System.Globalization;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
-// Zeigt oben links die Zeit an und beim Erreichen des Ziels eine Ergebnis-Tafel mit Bestenliste (Top 5 pro Level).
-// Einbau: leeres GameObject "LevelTimer" in jede Level-Szene legen und dieses Script draufziehen.
-// Die Anzeige wird per Code gezeichnet (OnGUI), du brauchst also keinen Canvas.
 public class LevelTimer : MonoBehaviour
 {
     public static LevelTimer Instance { get; private set; }
 
     [Header("Einstellungen")]
-    public bool startOnFirstInput = true;   // Zeit startet erst bei der ersten Bewegung
-    public int maxEntries = 5;              // so viele Plaetze hat die Bestenliste
+    public bool startOnFirstInput = true;
+    public int maxEntries = 5;
 
     class Entry
     {
@@ -20,18 +17,25 @@ public class LevelTimer : MonoBehaviour
         public float time;
     }
 
-    float elapsed, finalTime;
-    bool running, finished, awaitingName;
-    string playerName = "Player";
+    // Zeit
+    float elapsed, finalTime, finishedAt;
+    bool running, finished;
+
+    // Muenzen
+    int coins, totalCoins;
+
+    // Bestenliste
     List<Entry> scores = new List<Entry>();
     Entry newEntry;
+    string playerName = "Player";
+    bool awaitingName;
 
-    GUIStyle timerStyle, titleStyle, centerStyle, rowStyle, rowHighlightStyle, buttonStyle, fieldStyle;
+    // GUI
+    GUIStyle timerStyle, titleStyle, centerStyle, rowStyle, rowHighlightStyle, buttonStyle, fieldStyle, hintStyle;
 
-    string Key
-    {
-        get { return "scores_" + SceneManager.GetActiveScene().name; }
-    }
+    public bool IsFinished { get { return finished; } }
+
+    // ---------- Unity ----------
 
     void Awake()
     {
@@ -42,15 +46,37 @@ public class LevelTimer : MonoBehaviour
     void Start()
     {
         scores = LoadScores();
+        totalCoins = FindObjectsByType<Coin>().Length;
     }
 
     void Update()
     {
-        if (finished) return;
+        // Ergebnis-Tafel
+        if (finished)
+        {
+            if (Time.unscaledTime - finishedAt < 0.5f) return;
 
+            bool confirm = Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)
+                           || Input.GetKeyDown(KeyCode.JoystickButton1);
+            bool retry = Input.GetKeyDown(KeyCode.R) || Input.GetKeyDown(KeyCode.JoystickButton2);
+
+            if (awaitingName)
+            {
+                if (confirm) SaveEntry();
+            }
+            else
+            {
+                if (confirm) LoadNext();
+                else if (retry) Restart();
+            }
+            return;
+        }
+
+        // Start
         if (!running)
         {
-            if (!startOnFirstInput || Input.GetAxisRaw("Horizontal") != 0f || Input.GetKeyDown(KeyCode.W))
+            if (!startOnFirstInput || Input.GetAxisRaw("Horizontal") != 0f
+                || Input.GetKeyDown(KeyCode.W) || Input.GetKeyDown(KeyCode.JoystickButton1))
                 running = true;
             return;
         }
@@ -58,7 +84,13 @@ public class LevelTimer : MonoBehaviour
         elapsed += Time.deltaTime;
     }
 
-    // Wird vom Ziel-Tor (Goal) aufgerufen
+    // ---------- Spielstand ----------
+
+    public void AddCoins(int amount)
+    {
+        coins += amount;
+    }
+
     public void Finish()
     {
         if (finished) return;
@@ -66,9 +98,10 @@ public class LevelTimer : MonoBehaviour
         finished = true;
         running = false;
         finalTime = elapsed;
+        finishedAt = Time.unscaledTime;
 
-        // Spieler sperren, sonst loesen Tastendruecke beim Namen-Tippen Spielaktionen aus
-        PlayerController player = FindFirstObjectByType<PlayerController>();
+        // Spieler sperren
+        PlayerController player = FindAnyObjectByType<PlayerController>();
         if (player != null) player.enabled = false;
 
         playerName = PlayerPrefs.GetString("playerName", "Player");
@@ -77,7 +110,12 @@ public class LevelTimer : MonoBehaviour
         Time.timeScale = 0f;
     }
 
-    // ---------- Speichern und Laden ----------
+    // ---------- Highscores ----------
+
+    string Key
+    {
+        get { return "scores_" + SceneManager.GetActiveScene().name; }
+    }
 
     List<Entry> LoadScores()
     {
@@ -125,7 +163,6 @@ public class LevelTimer : MonoBehaviour
         awaitingName = false;
     }
 
-    // Im Editor: Zahnrad-Menue des Scripts > "Highscores dieses Levels loeschen"
     [ContextMenu("Highscores dieses Levels loeschen")]
     void ClearScores()
     {
@@ -150,11 +187,11 @@ public class LevelTimer : MonoBehaviour
     {
         Time.timeScale = 1f;
         int next = SceneManager.GetActiveScene().buildIndex + 1;
-        if (next >= SceneManager.sceneCountInBuildSettings) next = 0; // nach dem letzten Level zurueck zum Anfang
+        if (next >= SceneManager.sceneCountInBuildSettings) next = 0;
         SceneManager.LoadScene(next);
     }
 
-    // ---------- Anzeige ----------
+    // ---------- GUI ----------
 
     static string FormatTime(float t)
     {
@@ -182,6 +219,9 @@ public class LevelTimer : MonoBehaviour
 
         buttonStyle = new GUIStyle(GUI.skin.button) { fontSize = 26 };
 
+        hintStyle = new GUIStyle(GUI.skin.label) { fontSize = 18, alignment = TextAnchor.MiddleCenter };
+        hintStyle.normal.textColor = new Color(1f, 1f, 1f, 0.65f);
+
         fieldStyle = new GUIStyle(GUI.skin.textField) { fontSize = 26, alignment = TextAnchor.MiddleLeft };
         fieldStyle.normal.textColor = Color.white;
         fieldStyle.focused.textColor = Color.white;
@@ -191,36 +231,43 @@ public class LevelTimer : MonoBehaviour
     {
         if (timerStyle == null) BuildStyles();
 
-        // Auf jede Bildschirmgroesse skalieren (Layout ist auf 720 Pixel Hoehe ausgelegt)
+        // Skalierung
         float scale = Screen.height / 720f;
         GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
         float w = Screen.width / scale;
 
-        // Zeitanzeige oben links
+        // Anzeige oben links
         float shown = finished ? finalTime : elapsed;
         GUI.Label(new Rect(20f, 12f, 420f, 50f), "Zeit " + FormatTime(shown), timerStyle);
         if (scores.Count > 0)
             GUI.Label(new Rect(20f, 56f, 420f, 36f), "Rekord " + FormatTime(scores[0].time), rowStyle);
+        if (totalCoins > 0)
+            GUI.Label(new Rect(20f, 92f, 420f, 36f), "Münzen " + coins + "/" + totalCoins, rowStyle);
 
         if (!finished) return;
 
-        // Ergebnis-Tafel
+        // Tafel
         Rect panel = new Rect(w / 2f - 260f, 90f, 520f, 520f);
         GUI.Box(panel, GUIContent.none);
-        GUI.Box(panel, GUIContent.none); // zweimal, damit der Hintergrund dunkler wird
+        GUI.Box(panel, GUIContent.none);
 
         GUI.Label(new Rect(panel.x, panel.y + 20f, panel.width, 50f), "Level geschafft!", titleStyle);
-        GUI.Label(new Rect(panel.x, panel.y + 80f, panel.width, 40f), "Deine Zeit: " + FormatTime(finalTime), centerStyle);
+        string result = "Deine Zeit: " + FormatTime(finalTime);
+        if (totalCoins > 0) result += "   Münzen: " + coins + "/" + totalCoins;
+        GUI.Label(new Rect(panel.x, panel.y + 80f, panel.width, 40f), result, centerStyle);
 
+        // Namenseingabe
         if (awaitingName)
         {
             GUI.Label(new Rect(panel.x, panel.y + 150f, panel.width, 40f), "In den Top " + maxEntries + "! Dein Name:", centerStyle);
             playerName = GUI.TextField(new Rect(panel.x + 110f, panel.y + 200f, 300f, 46f), playerName, 12, fieldStyle);
             if (GUI.Button(new Rect(panel.x + 160f, panel.y + 280f, 200f, 55f), "Speichern", buttonStyle))
                 SaveEntry();
+            GUI.Label(new Rect(panel.x, panel.y + 345f, panel.width, 30f), "Enter oder Kreuz: speichern", hintStyle);
             return;
         }
 
+        // Bestenliste
         GUI.Label(new Rect(panel.x, panel.y + 140f, panel.width, 40f), "Bestenliste", centerStyle);
         for (int i = 0; i < scores.Count; i++)
         {
@@ -231,10 +278,13 @@ public class LevelTimer : MonoBehaviour
             GUI.Label(new Rect(panel.x + 350f, y, 140f, 40f), FormatTime(scores[i].time), style);
         }
 
+        // Buttons
         float by = panel.y + panel.height - 80f;
         if (GUI.Button(new Rect(panel.x + 40f, by, 200f, 55f), "Nochmal", buttonStyle))
             Restart();
         if (GUI.Button(new Rect(panel.x + 280f, by, 200f, 55f), HasNextLevel() ? "Weiter" : "Zum Anfang", buttonStyle))
             LoadNext();
+        GUI.Label(new Rect(panel.x, panel.y + panel.height - 22f, panel.width, 24f),
+            "Enter / Kreuz: " + (HasNextLevel() ? "weiter" : "zum Anfang") + "     R / Kreis: nochmal", hintStyle);
     }
 }

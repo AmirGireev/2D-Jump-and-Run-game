@@ -5,88 +5,139 @@ using UnityEngine.UI;
 [RequireComponent(typeof(BoxCollider2D))]
 public class PlayerController : MonoBehaviour
 {
+    public static System.Action OnPlayerDied;
+
+    // Komponenten
+    Rigidbody2D rb;
+    BoxCollider2D box;
     Animator anim;
+    SpriteRenderer sr;
+    AudioSource sfx;
+    Camera cam;
+
+    // Allgemein
+    float facing = 1f;
+    float defaultGravity;
+    Vector3 respawnPoint;
+
+    // ---------- Tasten ----------
 
     [Header("Tasten (im Inspector aenderbar)")]
     public KeyCode jumpKey = KeyCode.W;
     public KeyCode dashKey = KeyCode.CapsLock;
     public KeyCode dashKeyAlt = KeyCode.Q;
-    public KeyCode slideKey = KeyCode.S;              // Rutschen / Ducken
-    public KeyCode slideKeyAlt = KeyCode.LeftControl; // auf "None" stellen, wenn du sie nicht willst
+    public KeyCode slideKey = KeyCode.S;
+    public KeyCode slideKeyAlt = KeyCode.LeftControl;
     public KeyCode slideKeyAlt2 = KeyCode.LeftShift;
-    public KeyCode shootStraightKey = KeyCode.Space;  // geradeaus schiessen
-    // Linksklick = Richtung Maus schiessen, A/D oder Pfeile = laufen
-    // Schuss-Taste nochmal druecken, solange der Ball da ist = zum Ball teleportieren
+    public KeyCode shootStraightKey = KeyCode.Space;
+    public KeyCode teleportKey = KeyCode.E;
+
+    [Header("Controller (PS4-Belegung, im Inspector aenderbar)")]
+    public KeyCode padJumpButton = KeyCode.JoystickButton1;      // Kreuz
+    public KeyCode padDashButton = KeyCode.JoystickButton2;      // Kreis
+    public KeyCode padDashAltButton = KeyCode.JoystickButton4;   // L1
+    public KeyCode padSlideButton = KeyCode.JoystickButton3;     // Dreieck
+    public KeyCode padShootButton = KeyCode.JoystickButton0;     // Quadrat
+    public KeyCode padShootAltButton = KeyCode.JoystickButton5;  // R1
+    public KeyCode padTeleportButton = KeyCode.JoystickButton7;  // R2
+    [Range(0.1f, 0.9f)] public float stickDeadzone = 0.35f;
+    public string aimAxisX = "RightStickX";
+    public string aimAxisY = "RightStickY";
+    bool rightStickAvailable;
+
+    // ---------- Bewegung ----------
 
     [Header("Laufen")]
     public float moveSpeed = 8f;
-    public float acceleration = 25f; // Wie schnell er anläuft
-    public float deceleration = 25f; // Wie schnell er abbremst
+    public float acceleration = 25f;
+    public float deceleration = 25f;
 
     [Header("Springen")]
     public float jumpForce = 14f;
-    public int maxAirJumps = 1;               // 1 = Double Jump
-    public float coyoteTime = 0.12f;          // kurz nach der Kante noch springen
-    public float jumpBufferTime = 0.12f;      // Sprung kurz vor der Landung merken
-    [Range(0.1f, 1f)] public float jumpCutMultiplier = 0.5f; // Taste loslassen = kleinerer Sprung
+    public int maxAirJumps = 1;
+    public float coyoteTime = 0.12f;
+    public float jumpBufferTime = 0.12f;
+    [Range(0.1f, 1f)] public float jumpCutMultiplier = 0.5f;
+    int airJumpsLeft;
+    float coyoteCounter, jumpBufferCounter;
 
     [Header("Wand")]
     public float wallSlideSpeed = 2f;
     public Vector2 wallJumpForce = new Vector2(9f, 14f);
-    public float wallJumpLockTime = 0.15f;    // so lange kein Steuern nach Wandsprung
+    public float wallJumpLockTime = 0.15f;
     public float wallCheckDistance = 0.6f;
+    public float wallStickTime = 0.15f;
+    bool isTouchingWall, isWallSliding;
+    float wallStickCounter, wallJumpLockCounter;
 
     [Header("Turnaround")]
-    public float turnaroundTime = 0.2f; // Wie lange die Wende-Animation dauert
+    public float turnaroundTime = 0.2f;
     private float turnaroundCounter;
     private bool isTurningAround;
+
+    // ---------- Aktionen ----------
 
     [Header("Dash")]
     public float dashSpeed = 22f;
     public float dashTime = 0.15f;
     public float dashCooldown = 0.4f;
-    public float doubleTapTime = 0.10f; // So viel Zeit hast du für den Doppelklick
+    public float doubleTapTime = 0.10f;
+    public Image dashBar;
     private float lastPressA = -10f;
     private float lastPressD = -10f;
-    
+    bool isDashing;
+    bool canDash = true;
+    float dashCounter, dashCooldownCounter;
+
+    [Header("Dash-Nachbilder")]
+    public bool dashAfterimages = true;
+    public float afterimageInterval = 0.03f;
+    public float afterimageFadeTime = 0.25f;
+    public Color afterimageColor = new Color(0.6f, 0.85f, 1f, 0.6f);
+    float afterimageTimer;
 
     [Header("Slide")]
     public float slideSpeed = 14f;
     public float slideTime = 0.45f;
     public float slideCooldown = 0.3f;
-    [Range(0.3f, 0.8f)] public float slideHeightFactor = 0.5f; // so hoch ist der Collider beim Rutschen
+    [Range(0.3f, 0.8f)] public float slideHeightFactor = 0.5f;
+    bool isSliding;
+    float slideCounter, slideCooldownCounter;
+    Vector2 normalSize, normalOffset;
 
     [Header("Schuss")]
     public GameObject projectilePrefab;
-    public float shootOffset = 0.6f;          // Abstand vom Spieler, an dem der Schuss startet
+    public float shootOffset = 0.6f;
     public float shootCooldown = 0.3f;
+    public LayerMask projectileLayer;
+    public Image shootBar;
+    Projectile activeProjectile;
+    float shootCounter, lastShotTime;
 
     [Header("Teleport")]
-    public float teleportDelay = 0.1f;        // kurz nach dem Schuss noch kein Teleport (gegen versehentlichen Doppelklick)
-    public float teleportRecharge = 1.5f;     // so lange kein neuer Schuss nach einem Teleport
+    public float teleportDelay = 0.1f;
+    public float teleportRecharge = 1.5f;
+
+    // ---------- Boden ----------
 
     [Header("Checks")]
-    public Transform groundCheck;             // leeres Kind-Objekt an den Fuessen
-    public float groundCheckRadius = 0.15f;
-    public LayerMask groundLayer;    
-    public LayerMask projectileLayer;
-    public Image dashBar;
-    public Image shootBar;         // Layer "Ground" auswaehlen
+    public Transform groundCheck;
+    public Vector2 groundCheckSize = new Vector2(0.6f, 0.1f);
+    public LayerMask groundLayer;
+    bool isGrounded;
+    float airVelY;
 
-    Rigidbody2D rb;
-    BoxCollider2D box;
-    Vector2 normalSize, normalOffset;         // Collider-Groesse im Stehen
-    Projectile activeProjectile;
-    Camera cam;
-    float facing = 1f;
-    float defaultGravity;
-    Vector3 respawnPoint;
+    // ---------- Sound ----------
 
-    bool isGrounded, isTouchingWall, isWallSliding, isDashing, isSliding, canDash = true;
-    int airJumpsLeft;
-    float coyoteCounter, jumpBufferCounter, wallJumpLockCounter;
-    float dashCounter, dashCooldownCounter, shootCounter, lastShotTime;
-    float slideCounter, slideCooldownCounter;
+    [Header("Sounds und Effekte")]
+    public AudioClip jumpSound;
+    public AudioClip dashSound;
+    public AudioClip slideSound;
+    public AudioClip landSound;
+    [Range(0f, 1f)] public float sfxVolume = 0.8f;
+    public float landSoundMinFallSpeed = 3f;
+
+    // ---------- Unity ----------
 
     void Awake()
     {
@@ -98,80 +149,118 @@ public class PlayerController : MonoBehaviour
         normalOffset = box.offset;
         defaultGravity = rb.gravityScale;
         respawnPoint = transform.position;
+        rightStickAvailable = AxisExists(aimAxisX) && AxisExists(aimAxisY);
+
+        sfx = gameObject.AddComponent<AudioSource>();
+        sfx.playOnAwake = false;
+
+        sr = GetComponentInChildren<SpriteRenderer>();
     }
 
     void Update()
     {
-        float dt = Time.deltaTime;
-        float x = Input.GetAxisRaw("Horizontal");
+        // Pause
+        if (Time.timeScale == 0f) return;
 
-        // Timer runterzaehlen
+        float dt = Time.deltaTime;
+        float x = ReadMoveInput();
+
+        // Boden check
+        bool wasGrounded = isGrounded;
+        isGrounded = Physics2D.OverlapBox(groundCheck.position, groundCheckSize, 0f, groundLayer);
+
+        // Landeton
+        if (!isGrounded) airVelY = rb.linearVelocity.y;
+        else if (!wasGrounded)
+        {
+            if (airVelY < -landSoundMinFallSpeed) PlaySfx(landSound);
+            airVelY = 0f;
+        }
+
+        // Wand check
+        isTouchingWall = Physics2D.Raycast(transform.position, Vector2.right * facing, wallCheckDistance, groundLayer);
+
+        // Timer
         dashCooldownCounter -= dt;
         shootCounter -= dt;
         slideCooldownCounter -= dt;
         wallJumpLockCounter -= dt;
-        if (Input.GetKeyDown(jumpKey)) 
+        if (JumpDown())
         {
             jumpBufferCounter = jumpBufferTime;
             isTurningAround = false;
-        if (x != 0f) SetFacing(Mathf.Sign(x)); // Turnaround abbrechen, wenn man springt
         }
         else jumpBufferCounter -= dt;
 
-        // Waehrend des Dashs nichts anderes tun
+        // Dash aktiv
         if (isDashing)
         {
             dashCounter -= dt;
+
+            // Nachbilder
+            if (dashAfterimages)
+            {
+                afterimageTimer -= dt;
+                if (afterimageTimer <= 0f)
+                {
+                    SpawnAfterimage();
+                    afterimageTimer = afterimageInterval;
+                }
+            }
+
             if (dashCounter <= 0f) EndDash();
             return;
         }
 
-        // Turnaround-Timer herunterzählen
+        // Turnaround
         if (isTurningAround)
         {
-        turnaroundCounter -= Time.deltaTime;
-    
-     // Charakter bremst während des Drehens etwas ab
-        rb.linearVelocity = new Vector2(Mathf.MoveTowards(rb.linearVelocity.x, 0f, deceleration * Time.deltaTime), rb.linearVelocity.y);
+            turnaroundCounter -= dt;
 
-        if (turnaroundCounter <= 0f)
-        {
-            isTurningAround = false;
-        
-        // Blickrichtung nur umdrehen, wenn der Spieler nicht aktiv dagegen drückt
-            float inputDir = Mathf.Sign(Input.GetAxisRaw("Horizontal"));
-            if (Input.GetAxisRaw("Horizontal") != 0) 
+            rb.linearVelocity = new Vector2(Mathf.MoveTowards(rb.linearVelocity.x, 0f, deceleration * dt), rb.linearVelocity.y);
+
+            if (turnaroundCounter <= 0f)
             {
-                SetFacing(inputDir);
-            }
-            else 
-            {
-                SetFacing(-facing);
+                isTurningAround = false;
+
+                if (x != 0f) SetFacing(x);
+                else SetFacing(-facing);
             }
         }
-        }
-            
 
-        // Blickrichtung & Turnaround-Erkennung
+        // Blickrichtung
         if (!isTurningAround && x != 0f && wallJumpLockCounter <= 0f && !isSliding && !isDashing)
         {
-         float inputDir = Mathf.Sign(x);
-    
-            if (inputDir != facing && isGrounded && Mathf.Abs(rb.linearVelocity.x) > 2f)
+            bool tryingToLeaveWall = isTouchingWall && (x != facing);
+
+            if (tryingToLeaveWall)
             {
-                StartTurnaround();
+                wallStickCounter -= dt;
+                if (wallStickCounter <= 0f)
+                {
+                    SetFacing(x);
+                }
             }
             else
             {
-              SetFacing(inputDir);
+                wallStickCounter = wallStickTime;
+
+                if (x != facing && isGrounded && Mathf.Abs(rb.linearVelocity.x) > 2f)
+                {
+                    StartTurnaround();
+                }
+                else
+                {
+                    SetFacing(x);
+                }
             }
         }
+        else
+        {
+            wallStickCounter = wallStickTime;
+        }
 
-        // Checks
-        isGrounded = Physics2D.OverlapCircle(groundCheck.position, groundCheckRadius, groundLayer);
-        isTouchingWall = Physics2D.Raycast(transform.position, Vector2.right * facing, wallCheckDistance, groundLayer);
-
-
+        // Coyote Airjump
         if (isGrounded)
         {
             coyoteCounter = coyoteTime;
@@ -180,39 +269,40 @@ public class PlayerController : MonoBehaviour
         else
         {
             coyoteCounter -= dt;
-            if (isTouchingWall) airJumpsLeft = maxAirJumps; // an der Wand wieder Air Jump
+            if (isTouchingWall) airJumpsLeft = maxAirJumps;
         }
 
         if ((isGrounded || isTouchingWall) && dashCooldownCounter <= 0f) canDash = true;
 
-        //dash
+        // Dash start
         if (canDash && dashCooldownCounter <= 0f && !isSliding)
         {
-            // 1. Die alte Methode: Normale Dash-Taste prüfen
-            if (Input.GetKeyDown(dashKey) || Input.GetKeyDown(dashKeyAlt))
+            // Dash Tasten
+            if (Input.GetKeyDown(dashKey) || Input.GetKeyDown(dashKeyAlt)
+                || Input.GetKeyDown(padDashButton) || Input.GetKeyDown(padDashAltButton))
             {
                 StartDash();
                 return;
             }
 
-            // 2. Neue Methode: Doppelklick für D (Rechts)
+            // Doppeltipp D
             if (Input.GetKeyDown(KeyCode.D))
             {
-                if (Time.time - lastPressD <= doubleTapTime) 
-                { 
-                    StartDash(); 
-                    return; 
+                if (Time.time - lastPressD <= doubleTapTime)
+                {
+                    StartDash();
+                    return;
                 }
                 lastPressD = Time.time;
             }
 
-            // 3. Neue Methode: Doppelklick für A (Links)
+            // Doppeltipp A
             if (Input.GetKeyDown(KeyCode.A))
             {
-                if (Time.time - lastPressA <= doubleTapTime) 
-                { 
-                    StartDash(); 
-                    return; 
+                if (Time.time - lastPressA <= doubleTapTime)
+                {
+                    StartDash();
+                    return;
                 }
                 lastPressA = Time.time;
             }
@@ -223,7 +313,6 @@ public class PlayerController : MonoBehaviour
         {
             slideCounter -= dt;
 
-            // Solange Zeit uebrig ist: schnell rutschen. Danach (falls die Decke noch zu niedrig ist): langsam kriechen
             float vx = slideCounter > 0f ? facing * slideSpeed : x * moveSpeed * 0.5f;
             rb.linearVelocity = new Vector2(vx, rb.linearVelocity.y);
 
@@ -236,7 +325,8 @@ public class PlayerController : MonoBehaviour
                 return;
             }
         }
-        else if ((Input.GetKeyDown(slideKey) || Input.GetKeyDown(slideKeyAlt) || Input.GetKeyDown(slideKeyAlt2))
+        else if ((Input.GetKeyDown(slideKey) || Input.GetKeyDown(slideKeyAlt) || Input.GetKeyDown(slideKeyAlt2)
+                  || Input.GetKeyDown(padSlideButton))
                  && isGrounded && slideCooldownCounter <= 0f)
         {
             StartSlide();
@@ -250,7 +340,7 @@ public class PlayerController : MonoBehaviour
             float targetSpeed = x * moveSpeed;
             float accelRate = (Mathf.Abs(targetSpeed) > 0.01f) ? acceleration : deceleration;
 
-            float newSpeed = Mathf.MoveTowards(rb.linearVelocity.x, targetSpeed, accelRate * Time.deltaTime);
+            float newSpeed = Mathf.MoveTowards(rb.linearVelocity.x, targetSpeed, accelRate * dt);
             rb.linearVelocity = new Vector2(newSpeed, rb.linearVelocity.y);
         }
 
@@ -262,69 +352,64 @@ public class PlayerController : MonoBehaviour
             else if (airJumpsLeft > 0) { airJumpsLeft--; Jump(); }
         }
 
-        // Sprungtaste frueh loslassen = niedrigerer Sprung
-        if (Input.GetKeyUp(jumpKey) && rb.linearVelocity.y > 0f)
+        // Jump cut
+        if (JumpUp() && rb.linearVelocity.y > 0f)
             rb.linearVelocity = new Vector2(rb.linearVelocity.x, rb.linearVelocity.y * jumpCutMultiplier);
 
-        // Wall Slide
-        isWallSliding = isTouchingWall && !isGrounded && rb.linearVelocity.y < 0f && x == facing;
+        // Wall slide
+        isWallSliding = isTouchingWall && rb.linearVelocity.y <= -wallSlideSpeed;
         if (isWallSliding)
             rb.linearVelocity = new Vector2(rb.linearVelocity.x, Mathf.Max(rb.linearVelocity.y, -wallSlideSpeed));
 
-        // Schuss und Teleport
+        // Schuss
         HandleShooting();
 
-        // UI Balken aktualisieren (1 = voll, 0 = leer)
-        if (dashBar != null) 
-        {
-        dashBar.fillAmount = 1f - Mathf.Clamp01(dashCooldownCounter / dashCooldown);
-        }
-    
-        if (shootBar != null) 
-        {
-        shootBar.fillAmount = 1f - Mathf.Clamp01(shootCounter / shootCooldown);
-        }
+        // UI Balken
+        if (dashBar != null)
+            dashBar.fillAmount = 1f - Mathf.Clamp01(dashCooldownCounter / dashCooldown);
 
-        // Animator mit Daten füttern
-        if (anim != null)
-        {
-        anim.SetFloat("speed", Mathf.Abs(rb.linearVelocity.x));
-        //anim.SetFloat("vSpeed", rb.linearVelocity.y);
-        //anim.SetBool("isGrounded", isGrounded);
-        //anim.SetBool("isWallSliding", isWallSliding);
-        //anim.SetBool("isSliding", isSliding);
-        //anim.SetBool("isDashing", isDashing);
-        }
+        if (shootBar != null)
+            shootBar.fillAmount = 1f - Mathf.Clamp01(shootCounter / shootCooldown);
     }
+
     void LateUpdate()
     {
-    if (anim != null) anim.SetBool("isTurningAround", isTurningAround);
-    }
-
-    // Eine Taste fuer beides: Ist kein Ball unterwegs, wird geschossen.
-    // Ist einer unterwegs (oder liegt noch), teleportiert dieselbe Taste dorthin.
-    void HandleShooting()
-    {
-        bool aimPressed = Input.GetMouseButtonDown(0);              // Linksklick: Richtung Maus
-        bool straightPressed = Input.GetKeyDown(shootStraightKey);  // Leertaste: geradeaus
-        if (!aimPressed && !straightPressed) return;
-
-        if (activeProjectile != null)
+        // Animator
+        if (anim != null)
         {
-            // Beim Rutschen nur teleportieren, wenn genug Platz zum Aufstehen ist
-            if (Time.time - lastShotTime >= teleportDelay && (!isSliding || CanStand()))
-                TeleportToProjectile();
-            return;
+            anim.SetBool("isTurningAround", isTurningAround);
+            anim.SetFloat("speed", Mathf.Abs(rb.linearVelocity.x));
+            anim.SetFloat("vSpeed", rb.linearVelocity.y);
+            anim.SetBool("isGrounded", isGrounded);
+            anim.SetBool("isSliding", isSliding);
+            anim.SetBool("isWallSliding", isWallSliding);
         }
-
-        if (shootCounter > 0f) return;
-
-        if (aimPressed) Shoot(GetAimDirection());
-        else Shoot(Vector2.right * facing);
     }
+
+    // ---------- Input ----------
+
+    static bool AxisExists(string axisName)
+    {
+        if (string.IsNullOrEmpty(axisName)) return false;
+        try { Input.GetAxisRaw(axisName); return true; }
+        catch (System.ArgumentException) { return false; }
+    }
+
+    float ReadMoveInput()
+    {
+        float raw = Input.GetAxisRaw("Horizontal");
+        if (Mathf.Abs(raw) < stickDeadzone) return 0f;
+        return Mathf.Sign(raw);
+    }
+
+    bool JumpDown() { return Input.GetKeyDown(jumpKey) || Input.GetKeyDown(padJumpButton); }
+    bool JumpUp() { return Input.GetKeyUp(jumpKey) || Input.GetKeyUp(padJumpButton); }
+
+    // ---------- Springen ----------
 
     void Jump()
     {
+        PlaySfx(jumpSound);
         rb.linearVelocity = new Vector2(rb.linearVelocity.x, jumpForce);
         jumpBufferCounter = 0f;
         coyoteCounter = 0f;
@@ -332,16 +417,37 @@ public class PlayerController : MonoBehaviour
 
     void WallJump()
     {
+        PlaySfx(jumpSound);
         float dir = -facing;
         rb.linearVelocity = new Vector2(dir * wallJumpForce.x, wallJumpForce.y);
+        airJumpsLeft = maxAirJumps;
         SetFacing(dir);
         wallJumpLockCounter = wallJumpLockTime;
         jumpBufferCounter = 0f;
         coyoteCounter = 0f;
     }
 
+    // ---------- Blickrichtung ----------
+
+    void SetFacing(float dir)
+    {
+        facing = dir;
+        Vector3 s = transform.localScale;
+        transform.localScale = new Vector3(Mathf.Abs(s.x) * dir, s.y, s.z);
+    }
+
+    void StartTurnaround()
+    {
+        isTurningAround = true;
+        turnaroundCounter = turnaroundTime;
+    }
+
+    // ---------- Dash ----------
+
     void StartDash()
     {
+        PlaySfx(dashSound);
+        afterimageTimer = 0f;
         isDashing = true;
         canDash = false;
         dashCounter = dashTime;
@@ -357,13 +463,51 @@ public class PlayerController : MonoBehaviour
         rb.linearVelocity = new Vector2(facing * moveSpeed, 0f);
     }
 
+    void SpawnAfterimage()
+    {
+        if (sr == null || sr.sprite == null) return;
+
+        GameObject g = new GameObject("Afterimage");
+        g.transform.position = sr.transform.position;
+        g.transform.rotation = sr.transform.rotation;
+        g.transform.localScale = sr.transform.lossyScale;
+
+        SpriteRenderer gr = g.AddComponent<SpriteRenderer>();
+        gr.sprite = sr.sprite;
+        gr.flipX = sr.flipX;
+        gr.flipY = sr.flipY;
+        gr.sharedMaterial = sr.sharedMaterial;
+        gr.sortingLayerID = sr.sortingLayerID;
+        gr.sortingOrder = sr.sortingOrder - 1;
+        gr.color = afterimageColor;
+
+        StartCoroutine(FadeAfterimage(gr));
+    }
+
+    System.Collections.IEnumerator FadeAfterimage(SpriteRenderer gr)
+    {
+        Color start = afterimageColor;
+        float t = 0f;
+        while (t < afterimageFadeTime && gr != null)
+        {
+            t += Time.deltaTime;
+            Color c = start;
+            c.a = Mathf.Lerp(start.a, 0f, t / afterimageFadeTime);
+            gr.color = c;
+            yield return null;
+        }
+        if (gr != null) Destroy(gr.gameObject);
+    }
+
+    // ---------- Slide ----------
+
     void StartSlide()
     {
+        PlaySfx(slideSound);
         isSliding = true;
         slideCounter = slideTime;
         slideCooldownCounter = slideCooldown;
 
-        // Collider flacher machen, die Unterkante bleibt am Boden
         float newHeight = normalSize.y * slideHeightFactor;
         box.size = new Vector2(normalSize.x, newHeight);
         box.offset = new Vector2(normalOffset.x, normalOffset.y - (normalSize.y - newHeight) / 2f);
@@ -378,10 +522,19 @@ public class PlayerController : MonoBehaviour
         box.offset = normalOffset;
     }
 
-    // Ist ueber dem Spieler genug Platz, um wieder aufzustehen?
     bool CanStand()
     {
-        return !Physics2D.OverlapBox(FullCenter(), FullSize() * 0.9f, 0f, groundLayer);
+        Vector2 full = FullSize();
+        float feetY = box.bounds.min.y;
+
+        float skinWidth = 0.05f;
+        float fullHeight = full.y - skinWidth;
+        float width = full.x * 0.9f;
+
+        Vector2 checkCenter = new Vector2(box.bounds.center.x, feetY + skinWidth + (fullHeight / 2f));
+        Vector2 checkSize = new Vector2(width, fullHeight);
+
+        return !Physics2D.OverlapBox(checkCenter, checkSize, 0f, groundLayer);
     }
 
     Vector2 FullSize()
@@ -390,9 +543,32 @@ public class PlayerController : MonoBehaviour
                            normalSize.y * Mathf.Abs(transform.lossyScale.y));
     }
 
-    Vector2 FullCenter()
+    // ---------- Schuss und Teleport ----------
+
+    void HandleShooting()
     {
-        return transform.TransformPoint(normalOffset);
+        bool aimPressed = Input.GetMouseButtonDown(0);
+        bool straightPressed = Input.GetKeyDown(shootStraightKey);
+        bool padPressed = Input.GetKeyDown(padShootButton) || Input.GetKeyDown(padShootAltButton);
+        bool tpPressed = Input.GetKeyDown(teleportKey) || Input.GetKeyDown(padTeleportButton);
+        bool shootPressed = aimPressed || straightPressed || padPressed;
+        if (!shootPressed && !tpPressed) return;
+
+        // Teleport
+        if (activeProjectile != null)
+        {
+            if (Time.time - lastShotTime >= teleportDelay && (!isSliding || CanStand()))
+                TeleportToProjectile();
+            return;
+        }
+
+        if (!shootPressed) return;
+
+        if (shootCounter > 0f) return;
+
+        if (aimPressed) Shoot(GetAimDirection());
+        else if (padPressed) Shoot(GetPadAimDirection());
+        else Shoot(Vector2.right * facing);
     }
 
     Vector2 GetAimDirection()
@@ -406,6 +582,22 @@ public class PlayerController : MonoBehaviour
         return dir.normalized;
     }
 
+    Vector2 GetPadAimDirection()
+    {
+        // Rechter Stick
+        if (rightStickAvailable)
+        {
+            Vector2 r = new Vector2(Input.GetAxisRaw(aimAxisX), Input.GetAxisRaw(aimAxisY));
+            if (r.magnitude > 0.4f) return r.normalized;
+        }
+
+        // Linker Stick
+        Vector2 l = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
+        if (l.magnitude > 0.5f) return l.normalized;
+
+        return Vector2.right * facing;
+    }
+
     void Shoot(Vector2 dir)
     {
         if (projectilePrefab == null) return;
@@ -414,13 +606,12 @@ public class PlayerController : MonoBehaviour
 
         Vector2 origin = transform.position;
 
-        // Groesse des Balls aus dem Prefab lesen
+        // Ball Radius
         float r = 0.15f;
         Projectile prefabProj = projectilePrefab.GetComponent<Projectile>();
         if (prefabProj != null) r = prefabProj.radius;
 
-        // Startpunkt: shootOffset vor dem Spieler. Liegt dort Boden oder Wand (z.B. beim Zielen nach
-        // unten), startet der Ball direkt vor der Flaeche und nicht darin.
+        // Startpunkt
         Vector2 spawnPos = origin + dir * shootOffset;
         RaycastHit2D hit = Physics2D.CircleCast(origin, r, dir, shootOffset, groundLayer);
         if (hit.collider != null)
@@ -430,9 +621,12 @@ public class PlayerController : MonoBehaviour
         Projectile proj = p.GetComponent<Projectile>();
         if (proj != null)
         {
-            // Ersetze groundLayer durch projectileLayer
-            proj.Init(dir, projectileLayer); 
+            proj.Init(dir, projectileLayer);
             activeProjectile = proj;
+        }
+        if (anim != null)
+        {
+            anim.SetTrigger("Shoot");
         }
     }
 
@@ -440,55 +634,32 @@ public class PlayerController : MonoBehaviour
     {
         if (isSliding) EndSlide();
 
-        Vector2 target = activeProjectile.transform.position;
-        Vector2 origin = transform.position;
-        Vector2 colliderOffset = FullCenter() - origin;
-        Vector2 size = FullSize() * 0.95f;
+        // Position
+        transform.position = activeProjectile.transform.position;
 
-        // Ist am Zielpunkt eine Wand im Weg, den Punkt schrittweise zum Spieler zurueckschieben
-        Vector2 toOrigin = origin - target;
-        float dist = toOrigin.magnitude;
-        Vector2 stepDir = dist > 0.01f ? toOrigin / dist : Vector2.zero;
-        Vector2 pos = target;
-        float moved = 0f;
-
-        while (Physics2D.OverlapBox(pos + colliderOffset, size, 0f, groundLayer) && moved < dist)
-        {
-            pos += stepDir * 0.1f;
-            moved += 0.1f;
-        }
-
-        // Kein freier Platz gefunden: nicht teleportieren
-        if (Physics2D.OverlapBox(pos + colliderOffset, size, 0f, groundLayer)) return;
-
-        transform.position = pos;
+        // Stopp
         rb.linearVelocity = Vector2.zero;
 
-        // Dash ist wieder da, der Double Jump bleibt wie er ist
+        // Cooldowns
         canDash = true;
         dashCooldownCounter = 0f;
-
-        // Der Schuss muss erst wieder aufladen
         shootCounter = teleportRecharge;
 
+        // Ball weg
         Destroy(activeProjectile.gameObject);
         activeProjectile = null;
     }
 
-    void SetFacing(float dir)
-    {
-        facing = dir;
-        Vector3 s = transform.localScale;
-        transform.localScale = new Vector3(Mathf.Abs(s.x) * dir, s.y, s.z);
-    }
+    // ---------- Respawn ----------
 
-    // Wird von Spikes und Gegnern aufgerufen
     public void Die()
     {
         if (isDashing) EndDash();
         if (isSliding) EndSlide();
         rb.linearVelocity = Vector2.zero;
+
         transform.position = respawnPoint;
+        OnPlayerDied?.Invoke();
     }
 
     public void SetCheckpoint(Vector3 pos)
@@ -496,18 +667,22 @@ public class PlayerController : MonoBehaviour
         respawnPoint = pos;
     }
 
+    // ---------- Sound ----------
+
+    void PlaySfx(AudioClip c)
+    {
+        if (c != null && sfx != null) sfx.PlayOneShot(c, sfxVolume);
+    }
+
+    // ---------- Gizmos ----------
+
     void OnDrawGizmosSelected()
     {
         if (groundCheck != null)
-            Gizmos.DrawWireSphere(groundCheck.position, groundCheckRadius);
+        {
+            Gizmos.color = Color.green;
+            Gizmos.DrawWireCube(groundCheck.position, groundCheckSize);
+        }
         Gizmos.DrawLine(transform.position, transform.position + Vector3.right * facing * wallCheckDistance);
     }
-
-    void StartTurnaround()
-{
-    isTurningAround = true;
-    turnaroundCounter = turnaroundTime;
 }
-}
-
-

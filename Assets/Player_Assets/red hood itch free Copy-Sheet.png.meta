@@ -415,7 +415,7 @@ TextureImporter:
   maxTextureSize: 2048
   textureSettings:
     serializedVersion: 2
-    filterMode: 1
+    filterMode: 0
     aniso: 1
     mipBias: 0
     wrapU: 1
@@ -426,10 +426,10 @@ TextureImporter:
   compressionQuality: 50
   spriteMode: 2
   spriteExtrude: 1
-  spriteMeshType: 1
+  spriteMeshType: 0
   alignment: 0
   spritePivot: {x: 0.5, y: 0.5}
-  spritePixelsToUnits: 40
+  spritePixelsToUnits: 16
   spriteBorder: {x: 0, y: 0, z: 0, w: 0}
   spriteGenerateFallbackPhysicsShape: 1
   alphaUsage: 1
@@ -455,7 +455,7 @@ TextureImporter:
     maxTextureSize: 2048
     resizeAlgorithm: 0
     textureFormat: -1
-    textureCompression: 1
+    textureCompression: 0
     compressionQuality: 50
     crunchedCompression: 0
     allowsAlphaSplitting: 0
@@ -1631,8 +1631,8 @@ TextureImporter:
         y: 834
         width: 28
         height: 17
-      alignment: 0
-      pivot: {x: 0.5, y: 0.5}
+      alignment: 9
+      pivot: {x: 0.5, y: 0.9117647}
       border: {x: 0, y: 0, z: 0, w: 0}
       customData: 
       outline: []
@@ -1653,8 +1653,8 @@ TextureImporter:
         y: 834
         width: 29
         height: 17
-      alignment: 0
-      pivot: {x: 0.5, y: 0.5}
+      alignment: 9
+      pivot: {x: 0.5, y: 0.9117647}
       border: {x: 0, y: 0, z: 0, w: 0}
       customData: 
       outline: []
@@ -1675,8 +1675,8 @@ TextureImporter:
         y: 834
         width: 29
         height: 17
-      alignment: 0
-      pivot: {x: 0.5, y: 0.5}
+      alignment: 9
+      pivot: {x: 0.5, y: 0.9117647}
       border: {x: 0, y: 0, z: 0, w: 0}
       customData: 
       outline: []
@@ -1697,8 +1697,8 @@ TextureImporter:
         y: 834
         width: 30
         height: 18
-      alignment: 0
-      pivot: {x: 0.5, y: 0.5}
+      alignment: 9
+      pivot: {x: 0.5, y: 0.8611111}
       border: {x: 0, y: 0, z: 0, w: 0}
       customData: 
       outline: []
@@ -3321,6 +3321,7 @@ TextureImporter:
       red hood itch free Copy-Sheet_124: -3697138388435321246
       red hood itch free Copy-Sheet_125: -7451245251281504538
       red hood itch free Copy-Sheet_126: -7685618065197832640
+      red hood itch free Copy-Sheet_127: -1503896337
       red hood itch free Copy-Sheet_13: 6740424038628661229
       red hood itch free Copy-Sheet_14: -4666678846667024798
       red hood itch free Copy-Sheet_15: 96111216612745974

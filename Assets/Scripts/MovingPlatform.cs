@@ -1,59 +1,71 @@
+using System.Collections.Generic;
 using UnityEngine;
 
+[RequireComponent(typeof(Rigidbody2D))]
 public class MovingPlatform : MonoBehaviour
 {
     [Header("Ziele")]
     public Transform punktA;
     public Transform punktB;
-    
+
     [Header("Einstellungen")]
     public float geschwindigkeit = 3f;
 
-    private Vector2 ziel;
+    Rigidbody2D rb;
+    Collider2D col;
+    bool nachB = true;
+    readonly HashSet<Rigidbody2D> passagiere = new HashSet<Rigidbody2D>();
 
-    void Start()
+    // ---------- Unity ----------
+
+    void Awake()
     {
-        // Die Plattform fährt zuerst zu Punkt B
-        ziel = punktB.position;
+        rb = GetComponent<Rigidbody2D>();
+        col = GetComponent<Collider2D>();
     }
 
-    void Update()
+    void OnDisable()
     {
-        // Bewegt die Plattform schrittweise zum aktuellen Ziel
-        transform.position = Vector2.MoveTowards(transform.position, ziel, geschwindigkeit * Time.deltaTime);
-
-        // Prüfen, ob das Ziel fast erreicht ist (Abstand kleiner als 0.1)
-        if (Vector2.Distance(transform.position, ziel) < 0.1f)
-        {
-            // Ziel wechseln
-            if (ziel == (Vector2)punktA.position) 
-            {
-                ziel = punktB.position;
-            }
-            else 
-            {
-                ziel = punktA.position;
-            }
-        }
+        passagiere.Clear();
     }
 
-    // Wenn der Spieler auf die Plattform springt
-    private void OnCollisionEnter2D(Collision2D collision)
+    // ---------- Bewegung ----------
+
+    void FixedUpdate()
     {
-        if (collision.gameObject.CompareTag("Player"))
+        if (punktA == null || punktB == null) return;
+
+        Vector2 ziel = nachB ? (Vector2)punktB.position : (Vector2)punktA.position;
+        Vector2 alt = rb.position;
+        Vector2 neu = Vector2.MoveTowards(alt, ziel, geschwindigkeit * Time.fixedDeltaTime);
+        Vector2 delta = neu - alt;
+
+        rb.MovePosition(neu);
+
+        // Passagiere
+        foreach (Rigidbody2D p in passagiere)
         {
-            // Spieler an die Plattform heften
-            collision.transform.SetParent(transform);
+            if (p != null) p.position += delta;
         }
+
+        // Richtungswechsel
+        if (Vector2.Distance(neu, ziel) < 0.01f)
+            nachB = !nachB;
     }
 
-    // Wenn der Spieler die Plattform verlässt
-    private void OnCollisionExit2D(Collision2D collision)
+    // ---------- Passagiere ----------
+
+    void OnCollisionStay2D(Collision2D c)
     {
-        if (collision.gameObject.CompareTag("Player"))
-        {
-            // Spieler wieder von der Plattform lösen
-            collision.transform.SetParent(null);
-        }
+        if (!c.gameObject.CompareTag("Player") || c.rigidbody == null) return;
+
+        bool oben = c.collider.bounds.min.y >= col.bounds.max.y - 0.1f;
+        if (oben) passagiere.Add(c.rigidbody);
+        else passagiere.Remove(c.rigidbody);
+    }
+
+    void OnCollisionExit2D(Collision2D c)
+    {
+        if (c.rigidbody != null) passagiere.Remove(c.rigidbody);
     }
 }

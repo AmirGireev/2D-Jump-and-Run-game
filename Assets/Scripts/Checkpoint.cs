@@ -1,6 +1,5 @@
 using UnityEngine;
 
-// Leeres Objekt oder Flagge mit Collider2D (Is Trigger) im Level platzieren.
 public class Checkpoint : MonoBehaviour
 {
     public Color activeColor = Color.green;
@@ -17,6 +16,7 @@ public class Checkpoint : MonoBehaviour
         player.SetCheckpoint(transform.position);
         activated = true;
 
+        // Farbe
         SpriteRenderer sr = GetComponent<SpriteRenderer>();
         if (sr != null) sr.color = activeColor;
     }

@@ -1,13 +1,12 @@
 using UnityEngine;
 
-// Laufender Gegner. Braucht: Rigidbody2D (Freeze Rotation Z), Collider2D (kein Trigger).
-// Fuer "Schuss toetet Gegner" zusaetzlich das Script Destructible auf das gleiche Objekt legen.
 [RequireComponent(typeof(Rigidbody2D))]
 public class Enemy : MonoBehaviour
 {
+    // Bewegung
     public float speed = 2f;
     public float wallCheckDistance = 0.5f;
-    public float edgeCheckOffset = 0.5f;   // wie weit vorne der Kanten-Check sitzt
+    public float edgeCheckOffset = 0.5f;
     public float edgeCheckDepth = 1f;
     public LayerMask groundLayer;
 
@@ -15,15 +14,34 @@ public class Enemy : MonoBehaviour
     public bool canBeStomped = true;
     public float stompBounce = 10f;
 
+    [Header("Schaden")]
+    public bool killsPlayerOnContact = true;
+
     Rigidbody2D rb;
     Collider2D col;
+    Vector3 startPos;
     float dir = 1f;
+
+    // ---------- Unity ----------
 
     void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
         col = GetComponent<Collider2D>();
     }
+
+    void Start()
+    {
+        startPos = transform.position;
+        PlayerController.OnPlayerDied += ResetEnemy;
+    }
+
+    void OnDestroy()
+    {
+        PlayerController.OnPlayerDied -= ResetEnemy;
+    }
+
+    // ---------- Bewegung ----------
 
     void Update()
     {
@@ -44,6 +62,17 @@ public class Enemy : MonoBehaviour
         transform.localScale = new Vector3(Mathf.Abs(s.x) * dir, s.y, s.z);
     }
 
+    // ---------- Reset ----------
+
+    void ResetEnemy()
+    {
+        transform.position = startPos;
+        gameObject.SetActive(true);
+        dir = 1f;
+    }
+
+    // ---------- Schaden ----------
+
     void OnCollisionEnter2D(Collision2D collision)
     {
         if (!collision.collider.CompareTag("Player")) return;
@@ -52,20 +81,22 @@ public class Enemy : MonoBehaviour
         Rigidbody2D playerRb = collision.collider.attachedRigidbody;
         if (player == null) return;
 
-        // Spieler landet von oben auf dem Gegner
+        // Stomp check
         bool fromAbove = collision.collider.bounds.min.y > col.bounds.center.y;
         bool falling = playerRb != null && playerRb.linearVelocity.y <= 0.1f;
 
         if (canBeStomped && fromAbove && falling)
         {
             playerRb.linearVelocity = new Vector2(playerRb.linearVelocity.x, stompBounce);
-            Destroy(gameObject);
+            gameObject.SetActive(false);
         }
-        else
+        else if (killsPlayerOnContact)
         {
             player.Die();
         }
     }
+
+    // ---------- Gizmos ----------
 
     void OnDrawGizmosSelected()
     {
