@@ -642,27 +642,73 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f918d2828d837e14ca155e2612b5965d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerController
+  jumpKey: 37
+  dashKey: 72
+  dashKeyAlt: 31
+  slideKey: 33
+  slideKeyAlt: 55
+  slideKeyAlt2: 51
+  shootStraightKey: 1
+  teleportKey: 19
+  padJumpButton: 6
+  padSlideButton: 5
+  padSlideAltButton: 32
+  padDashButton: 7
+  padDashAltButton: 10
+  padShootButton: 4
+  padShootAltButton: 33
+  padTeleportButton: 11
+  stickDeadzone: 0.35
   moveSpeed: 8
+  acceleration: 25
+  deceleration: 25
   jumpForce: 14
   maxAirJumps: 2
   coyoteTime: 0.12
   jumpBufferTime: 0.12
   jumpCutMultiplier: 1
+  jumpVfx: {fileID: 0}
+  jumpVfxOffset: {x: 0, y: -0.5}
+  jumpVfxLifetime: 2
   wallSlideSpeed: 2
   wallJumpForce: {x: 9, y: 14}
   wallJumpLockTime: 0.15
   wallCheckDistance: 0.6
+  wallStickTime: 0.15
+  turnaroundTime: 0.2
   dashSpeed: 22
   dashTime: 0.15
   dashCooldown: 0.4
+  doubleTapTime: 0.1
+  dashBar: {fileID: 0}
+  dashAfterimages: 1
+  afterimageInterval: 0.03
+  afterimageFadeTime: 0.25
+  afterimageColor: {r: 0.6, g: 0.85, b: 1, a: 0.6}
+  slideSpeed: 14
+  slideTime: 0.45
+  slideCooldown: 0.3
+  slideHeightFactor: 0.5
   projectilePrefab: {fileID: 3427086401804331783, guid: 10d556ef2b387e24483dbc8c7999bb3f, type: 3}
-  firePoint: {fileID: 211014173}
+  shootOffset: 0.6
   shootCooldown: 0.3
+  projectileLayer:
+    serializedVersion: 2
+    m_Bits: 0
+  shootBar: {fileID: 0}
+  teleportDelay: 0.1
+  teleportRecharge: 1.5
   groundCheck: {fileID: 1716120173}
-  groundCheckRadius: 0.15
+  groundCheckSize: {x: 0.6, y: 0.1}
   groundLayer:
     serializedVersion: 2
     m_Bits: 64
+  jumpSound: {fileID: 0}
+  dashSound: {fileID: 0}
+  slideSound: {fileID: 0}
+  landSound: {fileID: 0}
+  sfxVolume: 0.8
+  landSoundMinFallSpeed: 3
 --- !u!1 &1716120172
 GameObject:
   m_ObjectHideFlags: 0

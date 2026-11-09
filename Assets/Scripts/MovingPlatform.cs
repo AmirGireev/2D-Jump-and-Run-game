@@ -40,7 +40,7 @@ public class MovingPlatform : MonoBehaviour
         Vector2 neu = Vector2.MoveTowards(alt, ziel, geschwindigkeit * Time.fixedDeltaTime);
         Vector2 delta = neu - alt;
 
-        rb.MovePosition(neu);
+        rb.position = neu;
 
         // Passagiere
         foreach (Rigidbody2D p in passagiere)

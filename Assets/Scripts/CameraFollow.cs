@@ -12,7 +12,7 @@ public class CameraFollow : MonoBehaviour
     public float lookAheadDistance = 2f;
     public float lookAheadSmooth = 3f;
 
-    [Header("Level-Grenzen (optional)")]
+    [Header("Level-Grenzen")]
     public bool useBounds = false;
     public Vector2 minBounds = new Vector2(-10f, -5f);
     public Vector2 maxBounds = new Vector2(100f, 20f);

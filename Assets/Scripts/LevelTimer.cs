@@ -1,7 +1,11 @@
 using System.Collections.Generic;
 using System.Globalization;
+using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.SceneManagement;
+using LeaderboardEntry = Unity.Services.Leaderboards.Models.LeaderboardEntry;
 
 public class LevelTimer : MonoBehaviour
 {
@@ -10,6 +14,8 @@ public class LevelTimer : MonoBehaviour
     [Header("Einstellungen")]
     public bool startOnFirstInput = true;
     public int maxEntries = 5;
+    [Tooltip("Zusatz fuer das Extra-Leaderboard, wenn alle Muenzen gesammelt wurden. Level_1 -> Level_1_Coins")]
+    public string coinBoardSuffix = "_Coins";
 
     class Entry
     {
@@ -30,6 +36,17 @@ public class LevelTimer : MonoBehaviour
     string playerName = "Player";
     bool awaitingName;
 
+    // Online-Bestenliste
+    enum OnlineState { Idle, Loading, Done, Failed }
+    OnlineState onlineState = OnlineState.Idle;
+    List<LeaderboardEntry> onlineEntries;   // null = keine Online-Daten
+    string myPlayerId;
+    bool allCoinsCollected;                 // Level mit allen Muenzen geschafft?
+    bool showingCoinBoard;                  // zeigt die Liste gerade das Muenzen-Leaderboard?
+    bool recordKnown;                       // Online-Rekord erfolgreich geladen?
+    float recordTime = -1f;                 // Online-Rekord (-1 = noch keine Zeit online)
+    LeaderboardEntry myEntry;               // eigener Platz (auch ausserhalb der Top-Liste)
+
     // GUI
     GUIStyle timerStyle, titleStyle, centerStyle, rowStyle, rowHighlightStyle, buttonStyle, fieldStyle, hintStyle;
 
@@ -39,14 +56,30 @@ public class LevelTimer : MonoBehaviour
 
     void Awake()
     {
+        // Singleton: Es darf nur einen LevelTimer pro Szene geben
+        if (Instance != null && Instance != this)
+        {
+            Debug.LogWarning("[LevelTimer] Zweiter LevelTimer gefunden, wird entfernt.");
+            Destroy(this);
+            return;
+        }
+
         Instance = this;
         Time.timeScale = 1f;
+    }
+
+    void OnDestroy()
+    {
+        if (Instance == this) Instance = null;
     }
 
     void Start()
     {
         scores = LoadScores();
         totalCoins = FindObjectsByType<Coin>().Length;
+
+        // Online-Anmeldung + Online-Rekord schon beim Levelstart im Hintergrund holen
+        _ = LoadRecordAsync();
     }
 
     void Update()
@@ -56,9 +89,8 @@ public class LevelTimer : MonoBehaviour
         {
             if (Time.unscaledTime - finishedAt < 0.5f) return;
 
-            bool confirm = Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)
-                           || Input.GetKeyDown(KeyCode.JoystickButton1);
-            bool retry = Input.GetKeyDown(KeyCode.R) || Input.GetKeyDown(KeyCode.JoystickButton2);
+            bool confirm = KeyDown(Key.Enter) || KeyDown(Key.NumpadEnter) || PadDown(GamepadButton.South);
+            bool retry = KeyDown(Key.R) || PadDown(GamepadButton.East);
 
             if (awaitingName)
             {
@@ -75,13 +107,77 @@ public class LevelTimer : MonoBehaviour
         // Start
         if (!running)
         {
-            if (!startOnFirstInput || Input.GetAxisRaw("Horizontal") != 0f
-                || Input.GetKeyDown(KeyCode.W) || Input.GetKeyDown(KeyCode.JoystickButton1))
+            if (!startOnFirstInput || AnyInputDown() || HorizontalInput() != 0f)
                 running = true;
             return;
         }
 
         elapsed += Time.deltaTime;
+    }
+
+    // ---------- Input ----------
+
+    static bool KeyDown(Key k)
+    {
+        Keyboard kb = Keyboard.current;
+        return kb != null && kb[k].wasPressedThisFrame;
+    }
+
+    static bool PadDown(GamepadButton b)
+    {
+        Gamepad gp = Gamepad.current;
+        return gp != null && gp[b].wasPressedThisFrame;
+    }
+
+    // Jede Taste, Maustaste oder Controller-Taste startet den Timer (auch Schuss und Teleport)
+    static bool AnyInputDown()
+    {
+        Keyboard kb = Keyboard.current;
+        if (kb != null && kb.anyKey.wasPressedThisFrame) return true;
+
+        Mouse m = Mouse.current;
+        if (m != null && (m.leftButton.wasPressedThisFrame
+                          || m.rightButton.wasPressedThisFrame
+                          || m.middleButton.wasPressedThisFrame))
+            return true;
+
+        Gamepad gp = Gamepad.current;
+        if (gp != null)
+        {
+            foreach (GamepadButton b in System.Enum.GetValues(typeof(GamepadButton)))
+            {
+                try
+                {
+                    if (gp[b].wasPressedThisFrame) return true;
+                }
+                catch
+                {
+                    // ungueltige/veraltete Enum-Werte ignorieren
+                }
+            }
+        }
+        return false;
+    }
+
+    static float HorizontalInput()
+    {
+        float raw = 0f;
+
+        Keyboard kb = Keyboard.current;
+        if (kb != null)
+        {
+            if (kb[Key.A].isPressed || kb[Key.LeftArrow].isPressed) raw -= 1f;
+            if (kb[Key.D].isPressed || kb[Key.RightArrow].isPressed) raw += 1f;
+        }
+
+        Gamepad gp = Gamepad.current;
+        if (gp != null)
+        {
+            raw += gp.leftStick.x.ReadValue();
+            raw += gp.dpad.x.ReadValue();
+        }
+
+        return Mathf.Abs(raw) < 0.2f ? 0f : raw;
     }
 
     // ---------- Spielstand ----------
@@ -105,14 +201,18 @@ public class LevelTimer : MonoBehaviour
         if (player != null) player.enabled = false;
 
         playerName = PlayerPrefs.GetString("playerName", "Player");
+        allCoinsCollected = totalCoins > 0 && coins >= totalCoins;
         awaitingName = scores.Count < maxEntries || finalTime < scores[scores.Count - 1].time;
+
+        // Kein Namensfenster noetig -> Zeit sofort online hochladen
+        if (!awaitingName) _ = UploadAndLoadAsync(playerName);
 
         Time.timeScale = 0f;
     }
 
     // ---------- Highscores ----------
 
-    string Key
+    string ScoresKey
     {
         get { return "scores_" + SceneManager.GetActiveScene().name; }
     }
@@ -120,7 +220,7 @@ public class LevelTimer : MonoBehaviour
     List<Entry> LoadScores()
     {
         List<Entry> list = new List<Entry>();
-        string raw = PlayerPrefs.GetString(Key, "");
+        string raw = PlayerPrefs.GetString(ScoresKey, "");
         if (string.IsNullOrEmpty(raw)) return list;
 
         foreach (string part in raw.Split(';'))
@@ -143,7 +243,7 @@ public class LevelTimer : MonoBehaviour
         foreach (Entry e in scores)
             parts.Add(e.name + ":" + e.time.ToString("F3", CultureInfo.InvariantCulture));
 
-        PlayerPrefs.SetString(Key, string.Join(";", parts.ToArray()));
+        PlayerPrefs.SetString(ScoresKey, string.Join(";", parts.ToArray()));
         PlayerPrefs.Save();
     }
 
@@ -161,12 +261,134 @@ public class LevelTimer : MonoBehaviour
 
         SaveScores();
         awaitingName = false;
+
+        // Name ist jetzt bestaetigt -> online hochladen
+        _ = UploadAndLoadAsync(clean);
+    }
+
+    // ---------- Online ----------
+
+    // Online-Rekord (Platz 1) beim Levelstart holen
+    async Task LoadRecordAsync()
+    {
+        try
+        {
+            string board = SceneManager.GetActiveScene().name;
+            List<LeaderboardEntry> top = await WithTimeout(OnlineHighscores.TopAsync(board, 1), 8000, "Rekord laden");
+            if (top != null)
+            {
+                recordKnown = true;
+                recordTime = top.Count > 0 ? (float)top[0].Score : -1f;
+            }
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning("[Online] Rekord laden fehlgeschlagen: " + e.Message);
+        }
+    }
+
+    // Zeit hochladen, danach die Top-Liste holen.
+    // Jeder Schritt hat ein Zeitlimit, damit nie ewig "Loading..." steht.
+    async Task UploadAndLoadAsync(string name)
+    {
+        onlineState = OnlineState.Loading;
+        string board = SceneManager.GetActiveScene().name;   // Leaderboard-ID = Szenenname
+        float time = finalTime;
+
+        try
+        {
+            await WithTimeout(OnlineHighscores.InitAsync(), 8000, "Anmeldung");
+            if (!OnlineHighscores.IsReady)
+            {
+                onlineState = OnlineState.Failed;
+                return;
+            }
+
+            await WithTimeout(OnlineHighscores.SetNameAsync(OnlineName(name)), 8000, "Name setzen");
+            await WithTimeout(OnlineHighscores.SubmitAsync(board, time), 8000, "Upload");
+
+            // Alle Muenzen gesammelt -> Zeit zusaetzlich ins Extra-Leaderboard
+            bool coinRun = allCoinsCollected;
+            string coinBoard = board + coinBoardSuffix;
+            if (coinRun)
+                await WithTimeout(OnlineHighscores.SubmitAsync(coinBoard, time), 8000, "Upload (alle Muenzen)");
+
+            // Angezeigt wird bei einem Muenzen-Lauf das Extra-Leaderboard, sonst das normale
+            string shownBoard = coinRun ? coinBoard : board;
+            List<LeaderboardEntry> list = await WithTimeout(OnlineHighscores.TopAsync(shownBoard, maxEntries), 8000, "Bestenliste");
+            LeaderboardEntry mine = list != null
+                ? await WithTimeout(OnlineHighscores.MyEntryAsync(shownBoard), 8000, "Eigener Platz")
+                : null;
+
+            // Der Rekord oben links kommt immer vom normalen Leaderboard
+            List<LeaderboardEntry> recordList = list;
+            if (coinRun)
+                recordList = await WithTimeout(OnlineHighscores.TopAsync(board, 1), 8000, "Rekord");
+
+            onlineEntries = list;
+            myEntry = mine;
+            myPlayerId = OnlineHighscores.PlayerId;
+            showingCoinBoard = coinRun;
+
+            if (recordList != null)
+            {
+                recordKnown = true;
+                recordTime = recordList.Count > 0 ? (float)recordList[0].Score : -1f;
+            }
+            onlineState = list != null ? OnlineState.Done : OnlineState.Failed;
+            Debug.Log("[Online] Fertig: " + onlineState);
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning("[Online] Fehler: " + e);
+            onlineState = OnlineState.Failed;
+        }
+    }
+
+    // Wartet auf eine Aufgabe, aber hoechstens "ms" Millisekunden (sonst null/false)
+    static async Task WithTimeout(Task t, int ms, string what)
+    {
+        Task first = await Task.WhenAny(t, Task.Delay(ms));
+        if (first != t)
+        {
+            Debug.LogWarning("[Online] Zeitueberschreitung bei: " + what);
+            return;
+        }
+        await t;
+    }
+
+    static async Task<T> WithTimeout<T>(Task<T> t, int ms, string what) where T : class
+    {
+        Task first = await Task.WhenAny(t, Task.Delay(ms));
+        if (first != t)
+        {
+            Debug.LogWarning("[Online] Zeitueberschreitung bei: " + what);
+            return null;
+        }
+        return await t;
+    }
+
+    // Unity erlaubt keine Leerzeichen im Namen und verlangt mindestens 3 Zeichen
+    static string OnlineName(string raw)
+    {
+        string n = (raw ?? "").Replace("#", "").Replace(" ", "_").Trim();
+        if (n.Length == 0) n = "Player";
+        while (n.Length < 3) n += "_";
+        return n;
+    }
+
+    // Unity haengt "#1234" an den Namen an -> fuer die Anzeige abschneiden
+    static string ShowName(string raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return "?";
+        int i = raw.LastIndexOf('#');
+        return i > 0 ? raw.Substring(0, i) : raw;
     }
 
     [ContextMenu("Highscores dieses Levels loeschen")]
     void ClearScores()
     {
-        PlayerPrefs.DeleteKey(Key);
+        PlayerPrefs.DeleteKey(ScoresKey);
         scores.Clear();
     }
 
@@ -238,11 +460,20 @@ public class LevelTimer : MonoBehaviour
 
         // Anzeige oben links
         float shown = finished ? finalTime : elapsed;
-        GUI.Label(new Rect(20f, 12f, 420f, 50f), "Zeit " + FormatTime(shown), timerStyle);
-        if (scores.Count > 0)
-            GUI.Label(new Rect(20f, 56f, 420f, 36f), "Rekord " + FormatTime(scores[0].time), rowStyle);
+        GUI.Label(new Rect(20f, 12f, 420f, 50f), "Time " + FormatTime(shown), timerStyle);
+        if (recordKnown)
+        {
+            // Online-Rekord (Platz 1 aller Spieler)
+            if (recordTime >= 0f)
+                GUI.Label(new Rect(20f, 56f, 420f, 36f), "Record " + FormatTime(recordTime), rowStyle);
+        }
+        else if (scores.Count > 0)
+        {
+            // Offline: eigener lokaler Rekord
+            GUI.Label(new Rect(20f, 56f, 420f, 36f), "Record " + FormatTime(scores[0].time), rowStyle);
+        }
         if (totalCoins > 0)
-            GUI.Label(new Rect(20f, 92f, 420f, 36f), "Münzen " + coins + "/" + totalCoins, rowStyle);
+            GUI.Label(new Rect(20f, 92f, 420f, 36f), "Coins " + coins + "/" + totalCoins, rowStyle);
 
         if (!finished) return;
 
@@ -251,40 +482,78 @@ public class LevelTimer : MonoBehaviour
         GUI.Box(panel, GUIContent.none);
         GUI.Box(panel, GUIContent.none);
 
-        GUI.Label(new Rect(panel.x, panel.y + 20f, panel.width, 50f), "Level geschafft!", titleStyle);
-        string result = "Deine Zeit: " + FormatTime(finalTime);
-        if (totalCoins > 0) result += "   Münzen: " + coins + "/" + totalCoins;
+        GUI.Label(new Rect(panel.x, panel.y + 20f, panel.width, 50f), "Level Complete!", titleStyle);
+        string result = "Your time: " + FormatTime(finalTime);
+        if (totalCoins > 0) result += "   Coins: " + coins + "/" + totalCoins;
         GUI.Label(new Rect(panel.x, panel.y + 80f, panel.width, 40f), result, centerStyle);
 
         // Namenseingabe
         if (awaitingName)
         {
-            GUI.Label(new Rect(panel.x, panel.y + 150f, panel.width, 40f), "In den Top " + maxEntries + "! Dein Name:", centerStyle);
+            GUI.Label(new Rect(panel.x, panel.y + 150f, panel.width, 40f), "Top " + maxEntries + "! Enter your name:", centerStyle);
             playerName = GUI.TextField(new Rect(panel.x + 110f, panel.y + 200f, 300f, 46f), playerName, 12, fieldStyle);
-            if (GUI.Button(new Rect(panel.x + 160f, panel.y + 280f, 200f, 55f), "Speichern", buttonStyle))
+            if (GUI.Button(new Rect(panel.x + 160f, panel.y + 280f, 200f, 55f), "Save", buttonStyle))
                 SaveEntry();
-            GUI.Label(new Rect(panel.x, panel.y + 345f, panel.width, 30f), "Enter oder Kreuz: speichern", hintStyle);
+            GUI.Label(new Rect(panel.x, panel.y + 345f, panel.width, 30f), "Enter / A / Cross: save", hintStyle);
             return;
         }
 
         // Bestenliste
-        GUI.Label(new Rect(panel.x, panel.y + 140f, panel.width, 40f), "Bestenliste", centerStyle);
-        for (int i = 0; i < scores.Count; i++)
+        string title = (showingCoinBoard && onlineEntries != null) ? "All Coins Leaderboard" : "Leaderboard";
+        if (onlineEntries != null) title += " (Online)";
+        else if (onlineState == OnlineState.Failed) title += " (Offline)";
+        GUI.Label(new Rect(panel.x, panel.y + 140f, panel.width, 40f), title, centerStyle);
+
+        if (onlineState == OnlineState.Loading)
         {
-            GUIStyle style = scores[i] == newEntry ? rowHighlightStyle : rowStyle;
-            float y = panel.y + 185f + i * 40f;
-            GUI.Label(new Rect(panel.x + 40f, y, 60f, 40f), (i + 1) + ".", style);
-            GUI.Label(new Rect(panel.x + 100f, y, 250f, 40f), scores[i].name, style);
-            GUI.Label(new Rect(panel.x + 350f, y, 140f, 40f), FormatTime(scores[i].time), style);
+            GUI.Label(new Rect(panel.x, panel.y + 185f, panel.width, 40f), "Loading...", centerStyle);
+        }
+        else if (onlineEntries != null)
+        {
+            // Online-Liste (alle Spieler)
+            for (int i = 0; i < onlineEntries.Count; i++)
+            {
+                LeaderboardEntry e = onlineEntries[i];
+                GUIStyle style = e.PlayerId == myPlayerId ? rowHighlightStyle : rowStyle;
+                float y = panel.y + 185f + i * 40f;
+                GUI.Label(new Rect(panel.x + 40f, y, 60f, 40f), (e.Rank + 1) + ".", style);
+                GUI.Label(new Rect(panel.x + 100f, y, 250f, 40f), ShowName(e.PlayerName), style);
+                GUI.Label(new Rect(panel.x + 350f, y, 140f, 40f), FormatTime((float)e.Score), style);
+            }
+
+            // Eigener Platz, falls nicht in der Top-Liste
+            bool inTop = false;
+            foreach (LeaderboardEntry e in onlineEntries)
+                if (e.PlayerId == myPlayerId) { inTop = true; break; }
+
+            if (!inTop && myEntry != null)
+            {
+                float y = panel.y + 185f + onlineEntries.Count * 40f;
+                GUI.Label(new Rect(panel.x + 40f, y, 60f, 40f), (myEntry.Rank + 1) + ".", rowHighlightStyle);
+                GUI.Label(new Rect(panel.x + 100f, y, 250f, 40f), ShowName(myEntry.PlayerName), rowHighlightStyle);
+                GUI.Label(new Rect(panel.x + 350f, y, 140f, 40f), FormatTime((float)myEntry.Score), rowHighlightStyle);
+            }
+        }
+        else
+        {
+            // Lokale Liste (Fallback, wenn offline)
+            for (int i = 0; i < scores.Count; i++)
+            {
+                GUIStyle style = scores[i] == newEntry ? rowHighlightStyle : rowStyle;
+                float y = panel.y + 185f + i * 40f;
+                GUI.Label(new Rect(panel.x + 40f, y, 60f, 40f), (i + 1) + ".", style);
+                GUI.Label(new Rect(panel.x + 100f, y, 250f, 40f), scores[i].name, style);
+                GUI.Label(new Rect(panel.x + 350f, y, 140f, 40f), FormatTime(scores[i].time), style);
+            }
         }
 
         // Buttons
         float by = panel.y + panel.height - 80f;
-        if (GUI.Button(new Rect(panel.x + 40f, by, 200f, 55f), "Nochmal", buttonStyle))
+        if (GUI.Button(new Rect(panel.x + 40f, by, 200f, 55f), "Retry", buttonStyle))
             Restart();
-        if (GUI.Button(new Rect(panel.x + 280f, by, 200f, 55f), HasNextLevel() ? "Weiter" : "Zum Anfang", buttonStyle))
+        if (GUI.Button(new Rect(panel.x + 280f, by, 200f, 55f), HasNextLevel() ? "Next Level!" : "Back to Start", buttonStyle))
             LoadNext();
         GUI.Label(new Rect(panel.x, panel.y + panel.height - 22f, panel.width, 24f),
-            "Enter / Kreuz: " + (HasNextLevel() ? "weiter" : "zum Anfang") + "     R / Kreis: nochmal", hintStyle);
+            "Enter / A / Cross: " + (HasNextLevel() ? "next level" : "back to start") + "     R / B / Circle: retry", hintStyle);
     }
 }

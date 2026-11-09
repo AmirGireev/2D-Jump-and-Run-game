@@ -1,4 +1,6 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.UI;
 
 [RequireComponent(typeof(Rigidbody2D))]
@@ -6,6 +8,7 @@ using UnityEngine.UI;
 public class PlayerController : MonoBehaviour
 {
     public static System.Action OnPlayerDied;
+    public static System.Action<Vector3> OnPlayerTeleported;   // Zielposition
 
     // Komponenten
     Rigidbody2D rb;
@@ -22,28 +25,27 @@ public class PlayerController : MonoBehaviour
 
     // ---------- Tasten ----------
 
-    [Header("Tasten (im Inspector aenderbar)")]
-    public KeyCode jumpKey = KeyCode.W;
-    public KeyCode dashKey = KeyCode.CapsLock;
-    public KeyCode dashKeyAlt = KeyCode.Q;
-    public KeyCode slideKey = KeyCode.S;
-    public KeyCode slideKeyAlt = KeyCode.LeftControl;
-    public KeyCode slideKeyAlt2 = KeyCode.LeftShift;
-    public KeyCode shootStraightKey = KeyCode.Space;
-    public KeyCode teleportKey = KeyCode.E;
+    [Header("Tasten")]
+    public Key jumpKey = Key.W;
+    public Key dashKey = Key.CapsLock;
+    public Key dashKeyAlt = Key.Q;
+    public Key slideKey = Key.S;
+    public Key slideKeyAlt = Key.LeftCtrl;
+    public Key slideKeyAlt2 = Key.LeftShift;
+    public Key shootStraightKey = Key.Space;
+    public Key teleportKey = Key.E;
 
-    [Header("Controller (PS4-Belegung, im Inspector aenderbar)")]
-    public KeyCode padJumpButton = KeyCode.JoystickButton1;      // Kreuz
-    public KeyCode padDashButton = KeyCode.JoystickButton2;      // Kreis
-    public KeyCode padDashAltButton = KeyCode.JoystickButton4;   // L1
-    public KeyCode padSlideButton = KeyCode.JoystickButton3;     // Dreieck
-    public KeyCode padShootButton = KeyCode.JoystickButton0;     // Quadrat
-    public KeyCode padShootAltButton = KeyCode.JoystickButton5;  // R1
-    public KeyCode padTeleportButton = KeyCode.JoystickButton7;  // R2
+    // Positionsbasiert
+    [Header("Controller")]
+    public GamepadButton padJumpButton = GamepadButton.South;             // Kreuz / A
+    public GamepadButton padSlideButton = GamepadButton.East;             // Kreis / B
+    public GamepadButton padSlideAltButton = GamepadButton.LeftTrigger;   // L2 / LT
+    public GamepadButton padDashButton = GamepadButton.West;              // Quadrat / X
+    public GamepadButton padDashAltButton = GamepadButton.LeftShoulder;   // L1 / LB
+    public GamepadButton padShootButton = GamepadButton.North;            // Dreieck / Y
+    public GamepadButton padShootAltButton = GamepadButton.RightTrigger;  // R2 / RT
+    public GamepadButton padTeleportButton = GamepadButton.RightShoulder; // R1 / RB
     [Range(0.1f, 0.9f)] public float stickDeadzone = 0.35f;
-    public string aimAxisX = "RightStickX";
-    public string aimAxisY = "RightStickY";
-    bool rightStickAvailable;
 
     // ---------- Bewegung ----------
 
@@ -60,6 +62,7 @@ public class PlayerController : MonoBehaviour
     [Range(0.1f, 1f)] public float jumpCutMultiplier = 0.5f;
     int airJumpsLeft;
     float coyoteCounter, jumpBufferCounter;
+
 
     [Header("Wand")]
     public float wallSlideSpeed = 2f;
@@ -118,6 +121,11 @@ public class PlayerController : MonoBehaviour
     public float teleportDelay = 0.1f;
     public float teleportRecharge = 1.5f;
 
+    [Header("Teleport-Geist")]
+    [Tooltip("Geist-Prefab")]
+    public GameObject teleportGhostPrefab;
+    public float teleportGhostDuration = 0.4f;
+
     // ---------- Boden ----------
 
     [Header("Checks")]
@@ -149,7 +157,6 @@ public class PlayerController : MonoBehaviour
         normalOffset = box.offset;
         defaultGravity = rb.gravityScale;
         respawnPoint = transform.position;
-        rightStickAvailable = AxisExists(aimAxisX) && AxisExists(aimAxisY);
 
         sfx = gameObject.AddComponent<AudioSource>();
         sfx.playOnAwake = false;
@@ -229,7 +236,7 @@ public class PlayerController : MonoBehaviour
         }
 
         // Blickrichtung
-        if (!isTurningAround && x != 0f && wallJumpLockCounter <= 0f && !isSliding && !isDashing)
+        if (!isTurningAround && x != 0f && wallJumpLockCounter <= 0f && !isSliding)
         {
             bool tryingToLeaveWall = isTouchingWall && (x != facing);
 
@@ -278,15 +285,15 @@ public class PlayerController : MonoBehaviour
         if (canDash && dashCooldownCounter <= 0f && !isSliding)
         {
             // Dash Tasten
-            if (Input.GetKeyDown(dashKey) || Input.GetKeyDown(dashKeyAlt)
-                || Input.GetKeyDown(padDashButton) || Input.GetKeyDown(padDashAltButton))
+            if (KeyDown(dashKey) || KeyDown(dashKeyAlt)
+                || PadDown(padDashButton) || PadDown(padDashAltButton))
             {
                 StartDash();
                 return;
             }
 
             // Doppeltipp D
-            if (Input.GetKeyDown(KeyCode.D))
+            if (KeyDown(Key.D))
             {
                 if (Time.time - lastPressD <= doubleTapTime)
                 {
@@ -297,7 +304,7 @@ public class PlayerController : MonoBehaviour
             }
 
             // Doppeltipp A
-            if (Input.GetKeyDown(KeyCode.A))
+            if (KeyDown(Key.A))
             {
                 if (Time.time - lastPressA <= doubleTapTime)
                 {
@@ -325,8 +332,8 @@ public class PlayerController : MonoBehaviour
                 return;
             }
         }
-        else if ((Input.GetKeyDown(slideKey) || Input.GetKeyDown(slideKeyAlt) || Input.GetKeyDown(slideKeyAlt2)
-                  || Input.GetKeyDown(padSlideButton))
+        else if ((KeyDown(slideKey) || KeyDown(slideKeyAlt) || KeyDown(slideKeyAlt2)
+                  || PadDown(padSlideButton) || PadDown(padSlideAltButton))
                  && isGrounded && slideCooldownCounter <= 0f)
         {
             StartSlide();
@@ -388,22 +395,67 @@ public class PlayerController : MonoBehaviour
 
     // ---------- Input ----------
 
-    static bool AxisExists(string axisName)
+    static bool KeyDown(Key k)
     {
-        if (string.IsNullOrEmpty(axisName)) return false;
-        try { Input.GetAxisRaw(axisName); return true; }
-        catch (System.ArgumentException) { return false; }
+        if (k == Key.None) return false;
+        if (!System.Enum.IsDefined(typeof(Key), k)) return false;
+        Keyboard kb = Keyboard.current;
+        return kb != null && kb[k].wasPressedThisFrame;
+    }
+
+    static bool KeyUp(Key k)
+    {
+        if (k == Key.None) return false;
+        if (!System.Enum.IsDefined(typeof(Key), k)) return false;
+        Keyboard kb = Keyboard.current;
+        return kb != null && kb[k].wasReleasedThisFrame;
+    }
+
+    static bool KeyHeld(Key k)
+    {
+        if (k == Key.None) return false;
+        if (!System.Enum.IsDefined(typeof(Key), k)) return false;
+        Keyboard kb = Keyboard.current;
+        return kb != null && kb[k].isPressed;
+    }
+
+    static bool PadDown(GamepadButton b)
+    {
+        if (!System.Enum.IsDefined(typeof(GamepadButton), b)) return false;
+        Gamepad gp = Gamepad.current;
+        return gp != null && gp[b].wasPressedThisFrame;
+    }
+
+    static bool PadUp(GamepadButton b)
+    {
+        if (!System.Enum.IsDefined(typeof(GamepadButton), b)) return false;
+        Gamepad gp = Gamepad.current;
+        return gp != null && gp[b].wasReleasedThisFrame;
     }
 
     float ReadMoveInput()
     {
-        float raw = Input.GetAxisRaw("Horizontal");
+        float raw = 0f;
+
+        // Tastatur
+        if (KeyHeld(Key.A) || KeyHeld(Key.LeftArrow)) raw -= 1f;
+        if (KeyHeld(Key.D) || KeyHeld(Key.RightArrow)) raw += 1f;
+
+        // Controller
+        Gamepad gp = Gamepad.current;
+        if (gp != null)
+        {
+            raw += gp.leftStick.x.ReadValue();
+            raw += gp.dpad.x.ReadValue();
+        }
+
+        raw = Mathf.Clamp(raw, -1f, 1f);
         if (Mathf.Abs(raw) < stickDeadzone) return 0f;
         return Mathf.Sign(raw);
     }
 
-    bool JumpDown() { return Input.GetKeyDown(jumpKey) || Input.GetKeyDown(padJumpButton); }
-    bool JumpUp() { return Input.GetKeyUp(jumpKey) || Input.GetKeyUp(padJumpButton); }
+    bool JumpDown() { return KeyDown(jumpKey) || PadDown(padJumpButton); }
+    bool JumpUp() { return KeyUp(jumpKey) || PadUp(padJumpButton); }
 
     // ---------- Springen ----------
 
@@ -547,10 +599,10 @@ public class PlayerController : MonoBehaviour
 
     void HandleShooting()
     {
-        bool aimPressed = Input.GetMouseButtonDown(0);
-        bool straightPressed = Input.GetKeyDown(shootStraightKey);
-        bool padPressed = Input.GetKeyDown(padShootButton) || Input.GetKeyDown(padShootAltButton);
-        bool tpPressed = Input.GetKeyDown(teleportKey) || Input.GetKeyDown(padTeleportButton);
+        bool aimPressed = Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame;
+        bool straightPressed = KeyDown(shootStraightKey);
+        bool padPressed = PadDown(padShootButton) || PadDown(padShootAltButton);
+        bool tpPressed = KeyDown(teleportKey) || PadDown(padTeleportButton);
         bool shootPressed = aimPressed || straightPressed || padPressed;
         if (!shootPressed && !tpPressed) return;
 
@@ -576,7 +628,10 @@ public class PlayerController : MonoBehaviour
         if (cam == null) cam = Camera.main;
         if (cam == null) return Vector2.right * facing;
 
-        Vector2 mouseWorld = cam.ScreenToWorldPoint(Input.mousePosition);
+        if (Mouse.current == null) return Vector2.right * facing;
+
+        Vector2 mouseScreen = Mouse.current.position.ReadValue();
+        Vector2 mouseWorld = cam.ScreenToWorldPoint(mouseScreen);
         Vector2 dir = mouseWorld - (Vector2)transform.position;
         if (dir.sqrMagnitude < 0.01f) return Vector2.right * facing;
         return dir.normalized;
@@ -584,15 +639,15 @@ public class PlayerController : MonoBehaviour
 
     Vector2 GetPadAimDirection()
     {
+        Gamepad gp = Gamepad.current;
+        if (gp == null) return Vector2.right * facing;
+
         // Rechter Stick
-        if (rightStickAvailable)
-        {
-            Vector2 r = new Vector2(Input.GetAxisRaw(aimAxisX), Input.GetAxisRaw(aimAxisY));
-            if (r.magnitude > 0.4f) return r.normalized;
-        }
+        Vector2 r = gp.rightStick.ReadValue();
+        if (r.magnitude > 0.4f) return r.normalized;
 
         // Linker Stick
-        Vector2 l = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
+        Vector2 l = gp.leftStick.ReadValue();
         if (l.magnitude > 0.5f) return l.normalized;
 
         return Vector2.right * facing;
@@ -634,11 +689,17 @@ public class PlayerController : MonoBehaviour
     {
         if (isSliding) EndSlide();
 
+        // Geist zuruecklassen
+        SpawnTeleportGhost();
+
         // Position
         transform.position = activeProjectile.transform.position;
 
         // Stopp
         rb.linearVelocity = Vector2.zero;
+
+        // Post-Processing
+        OnPlayerTeleported?.Invoke(transform.position);
 
         // Cooldowns
         canDash = true;
@@ -648,6 +709,17 @@ public class PlayerController : MonoBehaviour
         // Ball weg
         Destroy(activeProjectile.gameObject);
         activeProjectile = null;
+    }
+
+    void SpawnTeleportGhost()
+    {
+        if (teleportGhostPrefab == null || sr == null || sr.sprite == null) return;
+
+        GameObject g = Instantiate(teleportGhostPrefab, sr.transform.position, Quaternion.identity);
+        TeleportGhost ghost = g.GetComponent<TeleportGhost>();
+        if (ghost != null)
+            ghost.Init(sr.sprite, sr.flipX, sr.transform.lossyScale,
+                       sr.sortingLayerID, sr.sortingOrder - 1, teleportGhostDuration);
     }
 
     // ---------- Respawn ----------

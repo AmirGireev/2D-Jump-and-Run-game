@@ -183,10 +183,12 @@ MonoBehaviour:
   speed: 13
   maxDistance: 30
   radius: 0.1
+  gravityScale: -1
   damage: 1
   stuckLifetime: 2.75
-  gravityScale: -1
   blockerLayerName: ProjectileBlocker
+  impactVfx: {fileID: 4042514247660127294, guid: baae487a89c6d8649ad723c0b745bf6f, type: 3}
+  impactVfxLifetime: 1
   shootSound: {fileID: 8300000, guid: 3e7e2e4846ff8de4690f83802cd8252d, type: 3}
   hitSound: {fileID: 8300000, guid: 7162b6ba8c55eb4429ef661737d613ca, type: 3}
   volume: 0.2

@@ -18,6 +18,12 @@ public class Projectile : MonoBehaviour
     [Tooltip("Name des Layers, an dem der Ball NICHT haengen bleibt, sondern verschwindet")]
     public string blockerLayerName = "ProjectileBlocker";
 
+    [Header("Einschlag-Effekt")]
+    [Tooltip("Partikel-Prefab (Particle System), das beim Treffer erscheint")]
+    public GameObject impactVfx;
+    [Tooltip("Nach wie vielen Sekunden der Effekt wieder geloescht wird")]
+    public float impactVfxLifetime = 1f;
+
     [Header("Sounds (optional)")]
     public AudioClip shootSound;
     public AudioClip hitSound;
@@ -80,9 +86,10 @@ public class Projectile : MonoBehaviour
         if (dt <= 0f) return;
 
         // Im Boden
-        if (Physics2D.OverlapCircle(transform.position, radius * 0.8f, groundLayer))
+        Collider2D inside = Physics2D.OverlapCircle(transform.position, radius * 0.8f, groundLayer);
+        if (inside != null)
         {
-            Destroy(gameObject);
+            if (!HitSwitch(inside)) Destroy(gameObject);
             return;
         }
 
@@ -98,18 +105,20 @@ public class Projectile : MonoBehaviour
         RaycastHit2D hit = Physics2D.CircleCast(transform.position, radius, moveDir, step, groundLayer);
         if (hit.collider != null)
         {
+            if (HitSwitch(hit.collider)) return;
+
             Destructible d = hit.collider.GetComponent<Destructible>();
             if (d != null)
             {
                 d.TakeHit(damage);
-                PlaySound(hitSound);
+                OnHit(transform.position);
                 Destroy(gameObject);
                 return;
             }
 
             if (IsBlocker(hit.collider.gameObject))
             {
-                PlaySound(hitSound);
+                OnHit(transform.position);
                 Destroy(gameObject);
                 return;
             }
@@ -141,18 +150,20 @@ public class Projectile : MonoBehaviour
         if (stuck) return;
         if (other.CompareTag("Player")) return;
 
+        if (HitSwitch(other)) return;
+
         Destructible d = other.GetComponent<Destructible>();
         if (d != null)
         {
             d.TakeHit(damage);
-            PlaySound(hitSound);
+            OnHit(transform.position);
             Destroy(gameObject);
             return;
         }
 
         if (IsBlocker(other.gameObject))
         {
-            PlaySound(hitSound);
+            OnHit(transform.position);
             Destroy(gameObject);
             return;
         }
@@ -171,8 +182,8 @@ public class Projectile : MonoBehaviour
     {
         stuck = true;
         stuckTimer = 0f;
-        PlaySound(hitSound);
         velocity = Vector2.zero;
+        OnHit(position);
         transform.position = new Vector3(position.x, position.y, transform.position.z);
 
         if (rb != null)
@@ -183,10 +194,35 @@ public class Projectile : MonoBehaviour
         }
     }
 
+    // Schalter getroffen? Dann aktivieren und Ball entfernen
+    bool HitSwitch(Collider2D c)
+    {
+        ShootSwitch sw = c != null ? c.GetComponentInParent<ShootSwitch>() : null;
+        if (sw == null) return false;
+
+        sw.Activate();
+        OnHit(transform.position);
+        Destroy(gameObject);
+        return true;
+    }
+
     bool IsBlocker(GameObject go)
     {
         int layer = LayerMask.NameToLayer(blockerLayerName);
         return layer >= 0 && go.layer == layer;
+    }
+
+    // ---------- Treffer-Effekt ----------
+
+    void OnHit(Vector3 pos)
+    {
+        PlaySound(hitSound);
+
+        if (impactVfx != null)
+        {
+            GameObject fx = Instantiate(impactVfx, pos, Quaternion.identity);
+            Destroy(fx, impactVfxLifetime);
+        }
     }
 
     // ---------- Sound ----------
