@@ -119,8 +119,8 @@ public class ControlsGuide : MonoBehaviour
         {
             case 0: Resume(); break;
             case 1: view = View.Controls; startView = false; break;
-            case 2: LoadMainMenu(); break;
-            case 3: MainMenu.QuitGame(); break;
+            case 2: LoadMenuScene(true); break;    
+            case 3: LoadMenuScene(false); break;   
         }
     }
 
@@ -151,8 +151,9 @@ public class ControlsGuide : MonoBehaviour
         }
     }
 
-    void LoadMainMenu()
+    void LoadMenuScene(bool skipTitle)
     {
+        MainMenu.skipTitleOnce = skipTitle;
         pausedByMenu = false;
         view = View.Closed;
         Time.timeScale = 1f;

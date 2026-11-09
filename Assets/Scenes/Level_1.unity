@@ -138468,7 +138468,7 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 2139761163214224440, guid: 31aa3214e12896d4dbbf151a526cf9ac, type: 3}
       propertyPath: m_LocalScale.x
-      value: 0
+      value: 0.002524732
       objectReference: {fileID: 0}
     - target: {fileID: 2139761163214224440, guid: 31aa3214e12896d4dbbf151a526cf9ac, type: 3}
       propertyPath: m_LocalPosition.x
@@ -138702,9 +138702,6 @@ MonoBehaviour:
   coyoteTime: 0.1
   jumpBufferTime: 0.2
   jumpCutMultiplier: 0.5
-  jumpVfx: {fileID: 1937628517238956373, guid: 24512000c2409f24c9efad85b56a812d, type: 3}
-  jumpVfxOffset: {x: 0, y: -0.5}
-  jumpVfxLifetime: 2
   wallSlideSpeed: 2
   wallJumpForce: {x: 4, y: 16}
   wallJumpLockTime: 0.15
@@ -152235,9 +152232,9 @@ Camera:
   m_LensShift: {x: 0, y: 0}
   m_NormalizedViewPortRect:
     serializedVersion: 2
-    x: 0.014404852
-    y: -0.08252428
-    width: 0.97043216
+    x: 0.11208791
+    y: -0.3656958
+    width: 0.93772894
     height: 1.1650486
   near clip plane: 0.3
   far clip plane: 1000

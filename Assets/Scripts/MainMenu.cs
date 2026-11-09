@@ -4,30 +4,41 @@ using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.SceneManagement;
 
-// Hauptmenue
+// Hauptmenue mit Titelscreen
 public class MainMenu : MonoBehaviour
 {
     [Tooltip("Menue-Szene")]
     public string menuSceneName = "Menu";
     public string gameTitle = "2D Jump and Run";
 
+    [Header("Titelscreen")]
+    public bool startOnTitle = true;
+    [Tooltip("Hintergrundbild fuer den Titelscreen (optional)")]
+    public Texture2D titleBackground;
+    public string clickText = "Click to play";
+
     [Header("Aussehen")]
     [Range(0.4f, 1.5f)] public float uiScale = 1f;
 
-    enum View { Main, Levels, Controls }
+    enum View { Title, Main, Levels, Controls }
     View view = View.Main;
     readonly List<int> levelIndices = new List<int>();
     readonly List<string> levelNames = new List<string>();
     int selected;
     float lastStickY;
     Texture2D white;
-    GUIStyle titleStyle, buttonStyle, buttonSelStyle, smallStyle;
+    GUIStyle titleStyle, buttonStyle, buttonSelStyle, smallStyle, clickStyle;
 
     // ---------- Unity ----------
+
+    // Vom Pause-Menue gesetzt: "Main Menu" ueberspringt den Titelscreen einmalig
+    public static bool skipTitleOnce;
 
     void Awake()
     {
         Time.timeScale = 1f;   // Pause beenden
+        view = (startOnTitle && !skipTitleOnce) ? View.Title : View.Main;
+        skipTitleOnce = false;
     }
 
     void Start()
@@ -67,7 +78,7 @@ public class MainMenu : MonoBehaviour
 
         if (KeyDown(Key.Enter) || KeyDown(Key.NumpadEnter) || KeyDown(Key.Space) || PadDown(GamepadButton.South))
             Activate(selected);
-        else if (view != View.Main && (KeyDown(Key.Escape) || PadDown(GamepadButton.East)))
+        else if ((view == View.Levels || view == View.Controls) && (KeyDown(Key.Escape) || PadDown(GamepadButton.East)))
             GoTo(View.Main);
     }
 
@@ -77,6 +88,7 @@ public class MainMenu : MonoBehaviour
     {
         get
         {
+            if (view == View.Title) return 1;                       // nur "Click to play"
             if (view == View.Main) return 3;                        // Play, Controls, Quit
             if (view == View.Levels) return levelIndices.Count + 1;  // plus Back
             return 1;                                               // nur Back
@@ -91,11 +103,17 @@ public class MainMenu : MonoBehaviour
 
     void Activate(int index)
     {
+        if (view == View.Title)
+        {
+            GoTo(View.Main);
+            return;
+        }
+
         if (view == View.Main)
         {
             if (index == 0) GoTo(View.Levels);
             else if (index == 1) GoTo(View.Controls);
-            else QuitGame();
+            else GoTo(View.Title);   // Quit fuehrt zum Titelscreen
             return;
         }
 
@@ -116,7 +134,6 @@ public class MainMenu : MonoBehaviour
         }
     }
 
-    // Auch Pause-Menue
     public static void QuitGame()
     {
 #if UNITY_EDITOR
@@ -160,6 +177,9 @@ public class MainMenu : MonoBehaviour
 
         smallStyle = new GUIStyle(GUI.skin.label) { fontSize = 18, alignment = TextAnchor.MiddleCenter };
         smallStyle.normal.textColor = new Color(1f, 1f, 1f, 0.65f);
+
+        clickStyle = new GUIStyle(GUI.skin.label) { fontSize = 34, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+        clickStyle.normal.textColor = Color.white;
     }
 
     void OnGUI()
@@ -174,15 +194,38 @@ public class MainMenu : MonoBehaviour
         float w = Screen.width / s;
         float h = Screen.height / s;
 
-        GUI.color = new Color(0.04f, 0.06f, 0.1f, 1f);
-        GUI.DrawTexture(new Rect(0f, 0f, w, h), white);
-        GUI.color = oldColor;
+        if (view == View.Title && titleBackground != null)
+        {
+            GUI.DrawTexture(new Rect(0f, 0f, w, h), titleBackground, ScaleMode.ScaleAndCrop);
+        }
+        else
+        {
+            GUI.color = new Color(0.04f, 0.06f, 0.1f, 1f);
+            GUI.DrawTexture(new Rect(0f, 0f, w, h), white);
+            GUI.color = oldColor;
+        }
 
-        if (view == View.Main) DrawMain(w, h);
+        if (view == View.Title) DrawTitle(w, h);
+        else if (view == View.Main) DrawMain(w, h);
         else if (view == View.Levels) DrawLevels(w, h);
         else DrawControls(w, h);
 
         GUI.matrix = oldMatrix;
+    }
+
+    void DrawTitle(float w, float h)
+    {
+        GUI.Label(new Rect(0f, h * 0.25f, w, 90f), gameTitle, titleStyle);
+
+        // blinkender Text
+        float a = Mathf.Lerp(0.35f, 1f, Mathf.PingPong(Time.unscaledTime * 1.2f, 1f));
+        Color old = GUI.color;
+        GUI.color = new Color(1f, 1f, 1f, a);
+        GUI.Label(new Rect(0f, h * 0.65f, w, 50f), clickText, clickStyle);
+        GUI.color = old;
+
+        if (GUI.Button(new Rect(0f, 0f, w, h), GUIContent.none, GUIStyle.none))
+            GoTo(View.Main);
     }
 
     void DrawMain(float w, float h)

@@ -149,7 +149,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MainMenu
   menuSceneName: Menu
-  gameTitle: 2D Jump and Run
+  gameTitle: Lost Woods
+  startOnTitle: 1
+  titleBackground: {fileID: 2800000, guid: 7e0f946741c294646a9c3b4f2867234d, type: 3}
+  clickText: Click to play
   uiScale: 1
 --- !u!4 &461085019
 Transform:
