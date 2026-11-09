@@ -6,22 +6,22 @@ public class Projectile : MonoBehaviour
     public float speed = 15f;
     public float maxDistance = 12f;
     public float radius = 0.15f;
-    [Tooltip("Wie stark die Schwerkraft den Ball nach unten zieht (Flugbogen). 0 = gerade Bahn. -1 = Wert vom Rigidbody2D im Prefab uebernehmen")]
+    [Tooltip("-1 = Rigidbody-Wert")]
     public float gravityScale = -1f;
 
     // Treffer
     public int damage = 1;
-    [Tooltip("So lange bleibt der Ball an einer Wand/am Boden haengen (Sekunden). 0 = bis zum Teleport")]
+    [Tooltip("Haftzeit (0 = unendlich)")]
     public float stuckLifetime = 5f;
 
     [Header("Blocker")]
-    [Tooltip("Name des Layers, an dem der Ball NICHT haengen bleibt, sondern verschwindet")]
+    [Tooltip("Blocker-Layer")]
     public string blockerLayerName = "ProjectileBlocker";
 
     [Header("Einschlag-Effekt")]
-    [Tooltip("Partikel-Prefab (Particle System), das beim Treffer erscheint")]
+    [Tooltip("Partikel-Prefab")]
     public GameObject impactVfx;
-    [Tooltip("Nach wie vielen Sekunden der Effekt wieder geloescht wird")]
+    [Tooltip("Lebensdauer in Sekunden")]
     public float impactVfxLifetime = 1f;
 
     [Header("Sounds (optional)")]
@@ -33,7 +33,6 @@ public class Projectile : MonoBehaviour
     LayerMask groundLayer;
 
     // Flug
-    Vector2 dir = Vector2.right;
     Vector2 velocity;
     float gravityFactor;
     float travelled;
@@ -61,8 +60,7 @@ public class Projectile : MonoBehaviour
     public void Init(Vector2 direction, LayerMask ground)
     {
         groundLayer = ground;
-        dir = direction.normalized;
-        velocity = dir * speed;
+        velocity = direction.normalized * speed;
         AlignToVelocity();
         PlaySound(shootSound);
     }
@@ -194,7 +192,7 @@ public class Projectile : MonoBehaviour
         }
     }
 
-    // Schalter getroffen? Dann aktivieren und Ball entfernen
+    // Schalter-Treffer
     bool HitSwitch(Collider2D c)
     {
         ShootSwitch sw = c != null ? c.GetComponentInParent<ShootSwitch>() : null;
