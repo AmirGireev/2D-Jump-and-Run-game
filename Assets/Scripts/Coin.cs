@@ -10,7 +10,7 @@ public class Coin : MonoBehaviour
     public float bobSpeed = 3f;
     public float spinSpeed = 3f;
 
-    [Header("Beim Einsammeln ")]
+    [Header("Beim Einsammeln")]
     public AudioClip pickupSound;
     [Range(0f, 1f)] public float volume = 0.8f;
     public GameObject pickupEffect;

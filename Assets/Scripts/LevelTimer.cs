@@ -14,7 +14,7 @@ public class LevelTimer : MonoBehaviour
     [Header("Einstellungen")]
     public bool startOnFirstInput = true;
     public int maxEntries = 5;
-    [Tooltip("Zusatz fuer das Extra-Leaderboard, wenn alle Muenzen gesammelt wurden. Level_1 -> Level_1_Coins")]
+    [Tooltip("Muenzen-Board-Endung")]
     public string coinBoardSuffix = "_Coins";
 
     class Entry
@@ -39,13 +39,13 @@ public class LevelTimer : MonoBehaviour
     // Online-Bestenliste
     enum OnlineState { Idle, Loading, Done, Failed }
     OnlineState onlineState = OnlineState.Idle;
-    List<LeaderboardEntry> onlineEntries;   // null = keine Online-Daten
+    List<LeaderboardEntry> onlineEntries;   // null = offline
     string myPlayerId;
-    bool allCoinsCollected;                 // Level mit allen Muenzen geschafft?
-    bool showingCoinBoard;                  // zeigt die Liste gerade das Muenzen-Leaderboard?
-    bool recordKnown;                       // Online-Rekord erfolgreich geladen?
-    float recordTime = -1f;                 // Online-Rekord (-1 = noch keine Zeit online)
-    LeaderboardEntry myEntry;               // eigener Platz (auch ausserhalb der Top-Liste)
+    bool allCoinsCollected;                 // Alle Muenzen
+    bool showingCoinBoard;                  // Muenzen-Liste
+    bool recordKnown;                       // Rekord geladen
+    float recordTime = -1f;                 // -1 = keiner
+    LeaderboardEntry myEntry;               // Eigener Platz
 
     // GUI
     GUIStyle timerStyle, titleStyle, centerStyle, rowStyle, rowHighlightStyle, buttonStyle, fieldStyle, hintStyle;
@@ -56,7 +56,7 @@ public class LevelTimer : MonoBehaviour
 
     void Awake()
     {
-        // Singleton: Es darf nur einen LevelTimer pro Szene geben
+        // Singleton
         if (Instance != null && Instance != this)
         {
             Debug.LogWarning("[LevelTimer] Zweiter LevelTimer gefunden, wird entfernt.");
@@ -78,7 +78,7 @@ public class LevelTimer : MonoBehaviour
         scores = LoadScores();
         totalCoins = FindObjectsByType<Coin>().Length;
 
-        // Online-Anmeldung + Online-Rekord schon beim Levelstart im Hintergrund holen
+        // Rekord laden
         _ = LoadRecordAsync();
     }
 
@@ -129,7 +129,7 @@ public class LevelTimer : MonoBehaviour
         return gp != null && gp[b].wasPressedThisFrame;
     }
 
-    // Jede Taste, Maustaste oder Controller-Taste startet den Timer (auch Schuss und Teleport)
+    // Jede Eingabe
     static bool AnyInputDown()
     {
         Keyboard kb = Keyboard.current;
@@ -152,7 +152,7 @@ public class LevelTimer : MonoBehaviour
                 }
                 catch
                 {
-                    // ungueltige/veraltete Enum-Werte ignorieren
+                    // Ungueltige ignorieren
                 }
             }
         }
@@ -204,7 +204,7 @@ public class LevelTimer : MonoBehaviour
         allCoinsCollected = totalCoins > 0 && coins >= totalCoins;
         awaitingName = scores.Count < maxEntries || finalTime < scores[scores.Count - 1].time;
 
-        // Kein Namensfenster noetig -> Zeit sofort online hochladen
+        // Sofort hochladen
         if (!awaitingName) _ = UploadAndLoadAsync(playerName);
 
         Time.timeScale = 0f;
@@ -262,13 +262,13 @@ public class LevelTimer : MonoBehaviour
         SaveScores();
         awaitingName = false;
 
-        // Name ist jetzt bestaetigt -> online hochladen
+        // Hochladen
         _ = UploadAndLoadAsync(clean);
     }
 
     // ---------- Online ----------
 
-    // Online-Rekord (Platz 1) beim Levelstart holen
+    // Online-Rekord
     async Task LoadRecordAsync()
     {
         try
@@ -287,12 +287,11 @@ public class LevelTimer : MonoBehaviour
         }
     }
 
-    // Zeit hochladen, danach die Top-Liste holen.
-    // Jeder Schritt hat ein Zeitlimit, damit nie ewig "Loading..." steht.
+    // Hochladen, Liste laden
     async Task UploadAndLoadAsync(string name)
     {
         onlineState = OnlineState.Loading;
-        string board = SceneManager.GetActiveScene().name;   // Leaderboard-ID = Szenenname
+        string board = SceneManager.GetActiveScene().name;   // ID = Szenenname
         float time = finalTime;
 
         try
@@ -307,20 +306,20 @@ public class LevelTimer : MonoBehaviour
             await WithTimeout(OnlineHighscores.SetNameAsync(OnlineName(name)), 8000, "Name setzen");
             await WithTimeout(OnlineHighscores.SubmitAsync(board, time), 8000, "Upload");
 
-            // Alle Muenzen gesammelt -> Zeit zusaetzlich ins Extra-Leaderboard
+            // Muenzen-Board
             bool coinRun = allCoinsCollected;
             string coinBoard = board + coinBoardSuffix;
             if (coinRun)
                 await WithTimeout(OnlineHighscores.SubmitAsync(coinBoard, time), 8000, "Upload (alle Muenzen)");
 
-            // Angezeigt wird bei einem Muenzen-Lauf das Extra-Leaderboard, sonst das normale
+            // Angezeigtes Board
             string shownBoard = coinRun ? coinBoard : board;
             List<LeaderboardEntry> list = await WithTimeout(OnlineHighscores.TopAsync(shownBoard, maxEntries), 8000, "Bestenliste");
             LeaderboardEntry mine = list != null
                 ? await WithTimeout(OnlineHighscores.MyEntryAsync(shownBoard), 8000, "Eigener Platz")
                 : null;
 
-            // Der Rekord oben links kommt immer vom normalen Leaderboard
+            // Normaler Rekord
             List<LeaderboardEntry> recordList = list;
             if (coinRun)
                 recordList = await WithTimeout(OnlineHighscores.TopAsync(board, 1), 8000, "Rekord");
@@ -345,7 +344,7 @@ public class LevelTimer : MonoBehaviour
         }
     }
 
-    // Wartet auf eine Aufgabe, aber hoechstens "ms" Millisekunden (sonst null/false)
+    // Mit Zeitlimit
     static async Task WithTimeout(Task t, int ms, string what)
     {
         Task first = await Task.WhenAny(t, Task.Delay(ms));
@@ -368,7 +367,7 @@ public class LevelTimer : MonoBehaviour
         return await t;
     }
 
-    // Unity erlaubt keine Leerzeichen im Namen und verlangt mindestens 3 Zeichen
+    // Gueltiger Name
     static string OnlineName(string raw)
     {
         string n = (raw ?? "").Replace("#", "").Replace(" ", "_").Trim();
@@ -377,7 +376,7 @@ public class LevelTimer : MonoBehaviour
         return n;
     }
 
-    // Unity haengt "#1234" an den Namen an -> fuer die Anzeige abschneiden
+    // Anzeige-Name
     static string ShowName(string raw)
     {
         if (string.IsNullOrEmpty(raw)) return "?";
@@ -385,7 +384,7 @@ public class LevelTimer : MonoBehaviour
         return i > 0 ? raw.Substring(0, i) : raw;
     }
 
-    [ContextMenu("Highscores dieses Levels loeschen")]
+    [ContextMenu("Highscores loeschen")]
     void ClearScores()
     {
         PlayerPrefs.DeleteKey(ScoresKey);
@@ -463,13 +462,13 @@ public class LevelTimer : MonoBehaviour
         GUI.Label(new Rect(20f, 12f, 420f, 50f), "Time " + FormatTime(shown), timerStyle);
         if (recordKnown)
         {
-            // Online-Rekord (Platz 1 aller Spieler)
+            // Online-Rekord
             if (recordTime >= 0f)
                 GUI.Label(new Rect(20f, 56f, 420f, 36f), "Record " + FormatTime(recordTime), rowStyle);
         }
         else if (scores.Count > 0)
         {
-            // Offline: eigener lokaler Rekord
+            // Lokaler Rekord
             GUI.Label(new Rect(20f, 56f, 420f, 36f), "Record " + FormatTime(scores[0].time), rowStyle);
         }
         if (totalCoins > 0)
@@ -510,7 +509,7 @@ public class LevelTimer : MonoBehaviour
         }
         else if (onlineEntries != null)
         {
-            // Online-Liste (alle Spieler)
+            // Online-Liste
             for (int i = 0; i < onlineEntries.Count; i++)
             {
                 LeaderboardEntry e = onlineEntries[i];
@@ -521,7 +520,7 @@ public class LevelTimer : MonoBehaviour
                 GUI.Label(new Rect(panel.x + 350f, y, 140f, 40f), FormatTime((float)e.Score), style);
             }
 
-            // Eigener Platz, falls nicht in der Top-Liste
+            // Eigener Platz
             bool inTop = false;
             foreach (LeaderboardEntry e in onlineEntries)
                 if (e.PlayerId == myPlayerId) { inTop = true; break; }
@@ -536,7 +535,7 @@ public class LevelTimer : MonoBehaviour
         }
         else
         {
-            // Lokale Liste (Fallback, wenn offline)
+            // Lokale Liste
             for (int i = 0; i < scores.Count; i++)
             {
                 GUIStyle style = scores[i] == newEntry ? rowHighlightStyle : rowStyle;
